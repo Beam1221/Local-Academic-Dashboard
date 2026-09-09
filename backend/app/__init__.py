@@ -1,0 +1,1 @@
+"""Personal academic dashboard backend."""
