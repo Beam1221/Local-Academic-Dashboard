@@ -1,6 +1,4 @@
 import {
-  ArrowUpRight,
-  BookOpen,
   CalendarDays,
   CheckCheck,
   Clock3,
@@ -15,8 +13,6 @@ export function Dashboard({
   now,
   onTask,
   onStatus,
-  onCourse,
-  onNewCourse,
   busy,
 }: {
   tasks: Task[];
@@ -24,8 +20,6 @@ export function Dashboard({
   now: Date;
   onTask: (t: Task) => void;
   onStatus: (t: Task, s: Status) => void;
-  onCourse: (id: number) => void;
-  onNewCourse: () => void;
   busy: boolean;
 }) {
   const { today, next, overdue } = deadlineGroups(tasks, now);
@@ -161,49 +155,6 @@ export function Dashboard({
             </div>
           </div>
         )}
-      </section>
-      <section>
-        <div className="section-heading">
-          <h2>
-            Your courses <span className="count">{courses.length}</span>
-          </h2>
-          <button className="text-button" onClick={onNewCourse}>
-            Add course <ArrowUpRight size={15} />
-          </button>
-        </div>
-        <div className="course-grid">
-          {courses.map((course) => (
-            <button
-              key={course.id}
-              className="course-tile"
-              onClick={() => onCourse(course.id)}
-            >
-              <div className="course-tile-head">
-                <BookOpen size={20} style={{ color: course.color }} />
-                <ArrowUpRight size={17} />
-              </div>
-              <h3>{course.name}</h3>
-              <div className="course-tile-meta">
-                <span>
-                  {course.completed_tasks}/{course.total_tasks} tasks completed
-                </span>
-                <strong>{Math.round(course.progress)}%</strong>
-              </div>
-              <Progress
-                value={course.progress}
-                label={`${course.name} progress`}
-                color={course.color}
-              />
-            </button>
-          ))}
-          {!courses.length && (
-            <button className="course-empty" onClick={onNewCourse}>
-              <BookOpen size={24} />
-              <strong>Add your first course</strong>
-              <span>Give your coursework a home.</span>
-            </button>
-          )}
-        </div>
       </section>
     </>
   );

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
@@ -132,3 +132,63 @@ class FocusSession(Base):
     ended_at: Mapped[datetime] = mapped_column(UTCDateTime())
     elapsed_seconds: Mapped[int] = mapped_column()
     task: Mapped[Task | None] = relationship(back_populates="focus_sessions")
+
+
+class Todo(Timestamps, Base):
+    __tablename__ = "todos"
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) BETWEEN 1 AND 200", name="todo_title_length"),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="todo_progress_range"),
+        UniqueConstraint("scheduled_for", "task_id", name="todo_task_per_day"),
+        {"sqlite_autoincrement": True},
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    scheduled_for: Mapped[date] = mapped_column(Date, index=True)
+    progress: Mapped[int] = mapped_column(default=0)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), index=True)
+
+
+class BackgroundAsset(Base):
+    __tablename__ = "background_assets"
+    __table_args__ = {"sqlite_autoincrement": True}
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(50))
+    storage_name: Mapped[str] = mapped_column(String(50), unique=True)
+
+class Meeting(Timestamps, Base):
+    __tablename__ = 'meetings'
+    __table_args__ = {'sqlite_autoincrement': True}
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    start_local: Mapped[str] = mapped_column(String(30))
+    timezone: Mapped[str] = mapped_column(String(80))
+    duration: Mapped[int] = mapped_column(default=60)
+    frequency: Mapped[str] = mapped_column(String(20), default='weekly')
+    interval: Mapped[int] = mapped_column(default=1)
+    count: Mapped[int | None] = mapped_column()
+    until: Mapped[date | None] = mapped_column(Date)
+    place: Mapped[str] = mapped_column(String(300), default='')
+    link: Mapped[str] = mapped_column(String(1000), default='')
+    notes: Mapped[str] = mapped_column(Text, default='')
+    color: Mapped[str] = mapped_column(String(7), default='#7dd3fc')
+
+
+class NotificationSettings(Base):
+    __tablename__ = 'notification_settings'
+    __table_args__ = {'sqlite_autoincrement': True}
+    id: Mapped[int] = mapped_column(primary_key=True)
+    config: Mapped[str] = mapped_column(Text, default='{}')
+    secret: Mapped[str] = mapped_column(Text, default='')
+
+
+class EmailDelivery(Base):
+    __tablename__ = 'email_deliveries'
+    __table_args__ = {'sqlite_autoincrement': True}
+    id: Mapped[int] = mapped_column(primary_key=True)
+    delivery_key: Mapped[str] = mapped_column(String(100), unique=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30))
+    detail: Mapped[str] = mapped_column(String(300), default='')
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)

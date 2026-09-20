@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { request } from "../lib/api";
+import { MeetingForm, type Meeting, type Occurrence } from "./MeetingsView";
+import { useEffect, useState } from "react";
 import {
   addDays,
   addMonths,
@@ -21,6 +23,11 @@ export function CalendarView({
   courses: Course[];
   onTask: (task: Task) => void;
 }) {
+  const [meetings, setMeetings] = useState<Occurrence[]>([]);
+  const [meetingEdit, setMeetingEdit] = useState<Meeting>();
+  const [meetingError, setMeetingError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const [showMeetings, setShowMeetings] = useState(true);
   const [anchor, setAnchor] = useState(new Date());
   const [mode, setMode] = useState<"month" | "week">("month");
   const [courseId, setCourseId] = useState("all");
@@ -31,6 +38,9 @@ export function CalendarView({
   const days = Array.from({ length: mode === "month" ? 42 : 7 }, (_, i) =>
     addDays(first, i),
   );
+  const rangeStart = first.toISOString();
+  const rangeEnd = addDays(first, mode === 'month' ? 42 : 7).toISOString();
+  useEffect(() => { let current = true; setMeetingError(''); void request<Occurrence[]>(`/meetings/occurrences?start=${encodeURIComponent(rangeStart)}&end=${encodeURIComponent(rangeEnd)}`).then(rows => { if(current) setMeetings(rows); }).catch(err => { if(current) { setMeetings([]); setMeetingError(err.message); } }); return () => {current = false}; }, [rangeStart, rangeEnd, revision]);
   const visible = tasks.filter(
     (t) =>
       (courseId === "all" || t.course_id === Number(courseId)) &&
@@ -74,6 +84,8 @@ export function CalendarView({
   }
   return (
     <div className="view-content">
+      {meetingError && <p role="alert">Meetings could not load: {meetingError}</p>}
+      <label className="checkbox-label"><input type="checkbox" checked={showMeetings} onChange={e=>setShowMeetings(e.target.checked)}/>Show meetings</label>
       <div className="view-toolbar">
         <div className="calendar-nav">
           <button
@@ -164,6 +176,7 @@ export function CalendarView({
             const dayTasks = visible.filter((t) =>
               isSameDay(new Date(t.due_at), day),
             );
+            const dayMeetings = showMeetings ? meetings.filter(m => new Date(m.starts_at) < addDays(day, 1) && new Date(m.ends_at) > day) : [];
             return (
               <div
                 className={`calendar-cell ${mode === "month" && !isSameMonth(day, anchor) ? "outside" : ""} ${isSameDay(day, new Date()) ? "today-cell" : ""}`}
@@ -181,6 +194,8 @@ export function CalendarView({
                     {format(day, "d")}
                   </button>
                 )}
+                {(mode === 'month' ? dayMeetings.slice(0, 2) : dayMeetings).map(m => <button className="calendar-event meeting-event" key={m.occurrence_key} style={{'--course-color':m.color} as React.CSSProperties} onClick={()=>{ const {starts_at:_, ends_at:__, occurrence_key:___, ...meeting}=m; setMeetingEdit(meeting); }}><span className="event-time">{format(new Date(m.starts_at),'h:mm a')} · MEETING</span><strong>{m.title}</strong>{mode==='week'&&<span>{m.place} · {m.duration} min</span>}</button>)}
+                {mode==='month'&&dayMeetings.length>2&&<button className="more-events" onClick={()=>{setAnchor(day);setMode('week')}}>+{dayMeetings.length-2} meetings</button>}
                 {(mode === "month" ? dayTasks.slice(0, 3) : dayTasks).map(
                   taskButton,
                 )}
@@ -195,16 +210,17 @@ export function CalendarView({
                     +{dayTasks.length - 3} more
                   </button>
                 )}
-                {mode === "week" && !dayTasks.length && (
-                  <p className="calendar-clear">No deadlines</p>
+                {mode === "week" && !dayTasks.length && !dayMeetings.length && (
+                  <p className="calendar-clear">No events</p>
                 )}
               </div>
             );
           })}
         </div>
       </div>
+      {meetingEdit && <MeetingForm meeting={meetingEdit} onClose={()=>setMeetingEdit(undefined)} onSaved={()=>setRevision(r=>r+1)}/>}
       <p className="view-footnote">
-        All deadlines use {Intl.DateTimeFormat().resolvedOptions().timeZone}.
+        Calendar times use {Intl.DateTimeFormat().resolvedOptions().timeZone}.
         Select an item to edit it.
       </p>
     </div>

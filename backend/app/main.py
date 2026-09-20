@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import suppress
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -10,6 +12,10 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, engine, get_db
 from .models import Course, FocusSession, Subtask, Task, TaskStatus
 from .migrations import ensure_stable_ids
+from .todos import router as todos_router
+from .backgrounds import router as backgrounds_router
+from .meetings import router as meetings_router
+from .notifications import router as notifications_router, scheduler
 from .schemas import (
     CourseCreate, CourseOut, CoursePatch, FocusCreate, FocusOut,
     SubtaskCreate, SubtaskOut, SubtaskPatch, TaskCreate, TaskOut, TaskPatch,
@@ -23,12 +29,22 @@ async def lifespan(app):
     with engine.begin() as connection:
         connection.execute(text("PRAGMA journal_mode=WAL"))
         connection.execute(text("PRAGMA optimize"))
-    yield
+    worker = asyncio.create_task(scheduler(engine))
+    try:
+        yield
+    finally:
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
 
 
 app = FastAPI(title="Studyspace API", version="1.0.0", lifespan=lifespan,
               docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
 DB = Annotated[Session, Depends(get_db)]
+app.include_router(todos_router)
+app.include_router(backgrounds_router)
+app.include_router(meetings_router)
+app.include_router(notifications_router)
 
 
 @app.exception_handler(IntegrityError)

@@ -2,6 +2,14 @@
 
 PRAGMA foreign_keys=ON;
 
+CREATE TABLE background_assets (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	name VARCHAR(255) NOT NULL, 
+	content_type VARCHAR(50) NOT NULL, 
+	storage_name VARCHAR(50) NOT NULL, 
+	UNIQUE (storage_name)
+);
+
 CREATE TABLE courses (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
 	name VARCHAR(120) NOT NULL, 
@@ -11,6 +19,40 @@ CREATE TABLE courses (
 	updated_at DATETIME NOT NULL, 
 	CONSTRAINT course_name_length CHECK (length(trim(name)) BETWEEN 1 AND 120), 
 	CONSTRAINT course_hex_color CHECK (length(color) = 7 AND substr(color, 1, 1) = '#' AND substr(color, 2) NOT GLOB '*[^0-9a-fA-F]*')
+);
+
+CREATE TABLE email_deliveries (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	delivery_key VARCHAR(100) NOT NULL, 
+	kind VARCHAR(30) NOT NULL, 
+	status VARCHAR(30) NOT NULL, 
+	detail VARCHAR(300) NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	UNIQUE (delivery_key)
+);
+
+CREATE TABLE meetings (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	title VARCHAR(200) NOT NULL, 
+	start_local VARCHAR(30) NOT NULL, 
+	timezone VARCHAR(80) NOT NULL, 
+	duration INTEGER NOT NULL, 
+	frequency VARCHAR(20) NOT NULL, 
+	interval INTEGER NOT NULL, 
+	count INTEGER, 
+	until DATE, 
+	place VARCHAR(300) NOT NULL, 
+	link VARCHAR(1000) NOT NULL, 
+	notes TEXT NOT NULL, 
+	color VARCHAR(7) NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE notification_settings (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	config TEXT NOT NULL, 
+	secret TEXT NOT NULL
 );
 
 CREATE TABLE tasks (
@@ -68,3 +110,21 @@ CREATE TABLE subtasks (
 );
 
 CREATE INDEX ix_subtasks_task_id ON subtasks (task_id);
+
+CREATE TABLE todos (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	title VARCHAR(200) NOT NULL, 
+	scheduled_for DATE NOT NULL, 
+	progress INTEGER NOT NULL, 
+	task_id INTEGER, 
+	created_at DATETIME NOT NULL, 
+	updated_at DATETIME NOT NULL, 
+	CONSTRAINT todo_title_length CHECK (length(trim(title)) BETWEEN 1 AND 200), 
+	CONSTRAINT todo_progress_range CHECK (progress BETWEEN 0 AND 100), 
+	CONSTRAINT todo_task_per_day UNIQUE (scheduled_for, task_id), 
+	FOREIGN KEY(task_id) REFERENCES tasks (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_todos_scheduled_for ON todos (scheduled_for);
+
+CREATE INDEX ix_todos_task_id ON todos (task_id);

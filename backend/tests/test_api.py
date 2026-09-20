@@ -15,10 +15,17 @@ from sqlalchemy.dialects import sqlite
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", connect_args={"check_same_thread": False})
     event.listen(engine, "connect", configure_sqlite)
     Base.metadata.create_all(engine)
+    import asyncio
+    async def idle_scheduler(engine):
+        await asyncio.Event().wait()
+    monkeypatch.setattr("app.main.scheduler", idle_scheduler)
+    monkeypatch.setattr("app.notifications.KEY_PATH", tmp_path / "email.key")
+    monkeypatch.setattr("app.main.engine", engine)
+    monkeypatch.setattr("app.backgrounds.ASSET_DIR", tmp_path / "backgrounds")
 
     def test_db():
         with Session(engine) as db:
@@ -29,6 +36,61 @@ def client(tmp_path):
         yield client
     app.dependency_overrides.clear()
     engine.dispose()
+
+
+def test_daily_plan_independence_progress_and_duplicate_suggestions(client):
+    day = datetime.now(timezone.utc).date().isoformat()
+    c = course(client)
+    t = task(client, c["id"])
+    payload = {"title": "Work on tree insert", "scheduled_for": day, "task_id": t["id"]}
+    first = client.post("/api/todos", json=payload)
+    assert first.status_code == 201
+    assert client.post("/api/todos", json=payload).json()["id"] == first.json()["id"]
+    personal = client.post("/api/todos", json={"title": "Go for a walk", "scheduled_for": day}).json()
+    updated = client.patch(f"/api/todos/{first.json()['id']}", json={"progress": 100})
+    assert updated.json()["progress"] == 100
+    assert client.get(f"/api/tasks/{t['id']}").json()["status"] == "not_started"
+    assert len(client.get("/api/todos", params={"day": day}).json()) == 2
+    assert client.patch(f"/api/todos/{personal['id']}", json={"progress": 50}).json()["progress"] == 50
+    client.delete(f"/api/courses/{c['id']}")
+    rows = client.get("/api/todos", params={"day": day}).json()
+    assert len(rows) == 2 and rows[0]["task_id"] is None
+    assert client.delete(f"/api/todos/{personal['id']}").status_code == 204
+
+
+def test_daily_plan_date_and_progress_validation(client):
+    today = datetime.now(timezone.utc).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    tomorrow = (today + timedelta(days=1)).isoformat()
+    assert client.post("/api/todos", json={"title": "Past", "scheduled_for": yesterday}).status_code == 422
+    assert client.get("/api/todos", params={"day": yesterday}).status_code == 422
+    record = client.post("/api/todos", json={"title": "Future", "scheduled_for": tomorrow}).json()
+    assert client.patch(f"/api/todos/{record['id']}", json={"progress": 101}).status_code == 422
+    assert client.patch(f"/api/todos/{record['id']}", json={"progress": 3.5}).status_code == 422
+    assert client.patch(f"/api/todos/{record['id']}", json={"scheduled_for": yesterday}).status_code == 422
+    assert client.patch(f"/api/todos/{record['id']}", json={"title": "Changed", "scheduled_for": today.isoformat()}).status_code == 200
+    for offset in [-720, 840]:
+        local_day = datetime.now(timezone(timedelta(minutes=offset))).date().isoformat()
+        assert client.post("/api/todos", json={"title": "Local today", "scheduled_for": local_day, "utc_offset_minutes": offset}).status_code == 201
+
+
+def test_background_storage_and_invalid_uploads(client, tmp_path, monkeypatch):
+    import base64
+    image = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN3sAAAAASUVORK5CYII=")
+    result = client.post("/api/backgrounds", content=image, headers={"content-type": "image/png", "x-file-name": "../../photo.png"})
+    assert result.status_code == 201
+    item = result.json()
+    assert client.get(item["url"]).content == image
+    assert len(client.get("/api/backgrounds").json()) == 1
+    assert all(path.parent == tmp_path / "backgrounds" for path in (tmp_path / "backgrounds").iterdir())
+    assert client.post("/api/backgrounds", content=b"<svg/>", headers={"content-type": "image/svg+xml"}).status_code == 415
+    assert client.post("/api/backgrounds", content=b"not an image", headers={"content-type": "image/png"}).status_code == 415
+    monkeypatch.setattr("app.backgrounds.MAX_BYTES", 10)
+    assert client.post("/api/backgrounds", content=image, headers={"content-type": "image/png"}).status_code == 413
+    assert len(list((tmp_path / "backgrounds").iterdir())) == 1
+    assert client.delete(f"/api/backgrounds/{item['id']}").status_code == 204
+    assert client.get(item["url"]).status_code == 404
+    assert not list((tmp_path / "backgrounds").iterdir())
 
 
 def course(client):
@@ -166,3 +228,100 @@ def test_initial_schema_upgrade_preserves_records_and_prevents_id_reuse(tmp_path
         assert new_task.id > task_id
         assert db.execute(text("PRAGMA foreign_key_check")).all() == []
     engine.dispose()
+
+def meeting(client, **changes):
+    body = dict(title='Project check-in', start_local='2026-09-18T10:00', timezone='Asia/Dubai', frequency='weekly', interval=2, count=3)
+    body.update(changes)
+    return client.post('/api/meetings', json=body)
+
+
+def test_meeting_crud_fortnight_and_calendar(client):
+    result = meeting(client)
+    assert result.status_code == 201, result.text
+    saved = result.json()
+    rows = client.get('/api/meetings/occurrences', params={'start':'2026-09-01T00:00:00Z', 'end':'2026-11-01T00:00:00Z'}).json()
+    assert [r['starts_at'][:10] for r in rows] == ['2026-09-18','2026-10-02','2026-10-16']
+    assert rows[0]['starts_at'][11:16] == '06:00'
+    assert len(client.get('/api/meetings').json()) == 1
+    body = {k:v for k,v in saved.items() if k != 'id'}
+    body.update(title='Updated check-in', place='Lab 2', link='https://example.com/meeting')
+    assert client.put(f"/api/meetings/{saved['id']}", json=body).json()['place'] == 'Lab 2'
+    assert client.delete(f"/api/meetings/{saved['id']}").status_code == 204
+    assert client.get('/api/meetings').json() == []
+
+
+def test_meeting_dst_month_end_and_validation(client):
+    assert meeting(client, timezone='Invalid/Zone').status_code == 422
+    assert meeting(client, link='javascript:alert(1)').status_code == 422
+    assert meeting(client, until='2026-01-01').status_code == 422
+    assert meeting(client, start_local='2026-03-08T02:30', timezone='America/New_York').status_code == 422
+    first = meeting(client, start_local='2026-03-01T10:00', timezone='America/New_York',interval=1,count=2).json()
+    rows = client.get('/api/meetings/occurrences',params={'start':'2026-03-01T00:00:00Z','end':'2026-03-10T00:00:00Z'}).json()
+    assert [r['starts_at'][11:16] for r in rows] == ['15:00','14:00']
+    client.delete(f"/api/meetings/{first['id']}")
+    meeting(client,start_local='2026-01-31T10:00',frequency='monthly',interval=1,count=2)
+    rows = client.get('/api/meetings/occurrences',params={'start':'2026-01-01T00:00:00Z','end':'2026-05-01T00:00:00Z'}).json()
+    assert [r['starts_at'][:10] for r in rows] == ['2026-01-31','2026-03-31']
+    assert client.get('/api/meetings/occurrences',params={'start':'2026-01-01','end':'2030-01-01'}).status_code == 422
+
+
+def test_email_settings_encryption_and_preview(client, monkeypatch):
+    from app.models import NotificationSettings
+    from app.main import engine
+    config = client.get('/api/notifications').json()
+    assert config['enabled'] is False
+    config.pop('has_password')
+    config.update(host='smtp.example.com',sender='me@example.com',recipient='me@example.com',password='secret-test-value')
+    response = client.put('/api/notifications',json=config)
+    assert response.status_code == 200
+    assert response.json()['has_password'] and 'password' not in response.json()
+    with Session(engine) as db:
+        row=db.get(NotificationSettings,1)
+        assert 'secret-test-value' not in row.secret and 'secret-test-value' not in row.config
+    config['password']=''
+    assert client.put('/api/notifications',json=config).json()['has_password']
+    preview=client.get('/api/notifications/preview').json()
+    assert 'TO-DO LIST' in preview['body']
+    sent=[]
+    monkeypatch.setattr('app.notifications.deliver',lambda *args: sent.append(args))
+    assert client.post('/api/notifications/test').status_code == 200
+    assert len(sent)==1
+    assert client.get('/api/notifications/history').json()[0]['status']=='sent'
+    config['clear_password']=True
+    assert not client.put('/api/notifications',json=config).json()['has_password']
+    config['sender']='bad\r\nBcc:other@example.com'
+    assert client.put('/api/notifications',json=config).status_code==422
+
+
+def test_email_scheduler_completion_dedup_and_disabled(client, monkeypatch):
+    from app.notifications import tick
+    from app.main import engine
+    from app.models import Todo
+    now=datetime(2026,9,18,17,0,tzinfo=timezone.utc)
+    config=dict(host='smtp.example.com',sender='me@example.com',recipient='me@example.com',enabled=False,timezone='Asia/Dubai',daily_time='08:00',unfinished_time='20:00')
+    client.put('/api/notifications',json=config)
+    sent=[];monkeypatch.setattr('app.notifications.deliver',lambda *args:sent.append(args))
+    tick(engine,now);assert not sent
+    with Session(engine) as db:
+        db.add(Todo(title='Write report',scheduled_for=now.date(),progress=25));db.commit()
+    config['enabled']=True;client.put('/api/notifications',json=config)
+    tick(engine,now);tick(engine,now)
+    assert len(sent)==2 and 'Write report' in sent[1][3]
+    with Session(engine) as db:
+        todo=db.scalar(__import__('sqlalchemy').select(Todo));todo.progress=100;db.commit()
+    tick(engine,now+timedelta(days=1))
+    assert len(sent)==3  # daily sends; unfinished reminder skips completed work
+    assert client.get('/api/notifications/history').json()[0]['status']=='skipped'
+
+
+def test_email_failure_is_visible_and_not_retried(client, monkeypatch):
+    from app.notifications import tick
+    from app.main import engine
+    def fail(*args): raise RuntimeError('private-password-must-not-leak')
+    monkeypatch.setattr('app.notifications.deliver',fail)
+    client.put('/api/notifications',json=dict(host='smtp.example.com',sender='me@example.com',recipient='me@example.com',enabled=True,daily_time='00:00',unfinished=False))
+    now=datetime(2026,9,18,17,0,tzinfo=timezone.utc)
+    tick(engine,now);tick(engine,now)
+    history=client.get('/api/notifications/history').json()
+    assert len(history)==1 and history[0]['status']=='failed'
+    assert 'private-password' not in str(history)

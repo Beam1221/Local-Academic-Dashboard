@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   BookOpen,
+  Users,
+  Mail,
+  ListTodo,
+  Palette,
   CalendarDays,
   Columns3,
   Grid2X2,
@@ -18,15 +22,20 @@ import { api } from "./lib/api";
 import type { Course, Task, Status, FocusSession } from "./types";
 import { CourseForm, TaskForm, TaskDetail } from "./components/Forms";
 import { Modal } from "./components/Modal";
+import { TodoView } from "./views/TodoView";
+import { CoursesView } from "./views/CoursesView";
+import { Appearance } from "./components/Appearance";
 import { Dashboard } from "./views/Dashboard";
 import { CourseView } from "./views/CourseView";
+import { MeetingsView } from "./views/MeetingsView";
+import { NotificationsView } from "./views/NotificationsView";
 import { CalendarView } from "./views/CalendarView";
 import { KanbanView } from "./views/KanbanView";
 import { MatrixView } from "./views/MatrixView";
 import { Pomodoro } from "./components/Pomodoro";
 import { registerWorkspaceTools } from "./lib/webmcp";
 
-type View = "dashboard" | "calendar" | "board" | "matrix" | `course-${number}`;
+type View = "meetings" | "notifications" | "todos" | "courses" | "dashboard" | "calendar" | "board" | "matrix" | `course-${number}`;
 type Dialog =
   | { type: "course"; course?: Course }
   | { type: "task"; task?: Task }
@@ -36,21 +45,24 @@ type Dialog =
   | null;
 const navigation = [
   ["dashboard", "Dashboard", LayoutDashboard],
+  ["todos", "To-do list", ListTodo],
+  ["courses", "Courses", BookOpen],
   ["calendar", "Calendar", CalendarDays],
+  ["meetings", "Meetings", Users],
+  ["notifications", "Email reminders", Mail],
   ["board", "Kanban board", Columns3],
   ["matrix", "Priority matrix", Grid2X2],
 ] as const;
 function currentView(): View {
   const value = location.hash.slice(1);
-  return /^(dashboard|calendar|board|matrix|course-\d+)$/.test(value)
+  return /^(dashboard|todos|courses|calendar|meetings|notifications|board|matrix|course-\d+)$/.test(value)
     ? (value as View)
     : "dashboard";
 }
 function savedTheme() {
   try {
-    return localStorage.getItem("studyspace-theme") === "light"
-      ? "light"
-      : "dark";
+    const value = localStorage.getItem("studyspace-theme");
+    return value === "system" || value === "light" ? value : "dark";
   } catch {
     return "dark";
   }
@@ -62,6 +74,7 @@ export default function App() {
   const [sessions, setSessions] = useState<FocusSession[]>([]);
   const [view, setView] = useState<View>(currentView);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -75,13 +88,18 @@ export default function App() {
   } | null>(null);
   const taskRef = useRef(tasks);
   taskRef.current = tasks;
+  useEffect(() => { window.scrollTo(0, 0); }, [view]);
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    const media = matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => { document.documentElement.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme; };
+    apply();
+    media.addEventListener("change", apply);
     try {
       localStorage.setItem("studyspace-theme", theme);
     } catch {
       /* Theme still works for this visit. */
     }
+    return () => media.removeEventListener("change", apply);
   }, [theme]);
   useEffect(() => {
     const onHash = () => setView(currentView());
@@ -162,6 +180,7 @@ export default function App() {
 
   return (
     <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+      <Appearance mode={theme} onMode={setTheme} open={appearanceOpen} onClose={() => setAppearanceOpen(false)}/>
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
@@ -194,8 +213,8 @@ export default function App() {
             <button
               key={id}
               title={label}
-              aria-current={view === id ? "page" : undefined}
-              className={`nav-item ${view === id ? "active" : ""}`}
+              aria-current={view === id || (id === "courses" && view.startsWith("course-")) ? "page" : undefined}
+              className={`nav-item ${view === id || (id === "courses" && view.startsWith("course-")) ? "active" : ""}`}
               onClick={() => go(id)}
             >
               <Icon size={19} />
@@ -203,35 +222,8 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-course-heading">
-          <span className="sidebar-label sidebar-text">YOUR COURSES</span>
-          <button
-            className="icon-button"
-            onClick={() => setDialog({ type: "course" })}
-            aria-label="Add course"
-          >
-            <Plus size={16} />
-          </button>
-        </div>
-        <nav aria-label="Courses" className="course-nav">
-          {courses.map((c) => (
-            <button
-              key={c.id}
-              title={c.name}
-              className={`nav-item ${view === `course-${c.id}` ? "active" : ""}`}
-              onClick={() => go(`course-${c.id}`)}
-            >
-              <span className="course-dot" style={{ background: c.color }} />
-              <span className="sidebar-text">{c.name}</span>
-            </button>
-          ))}
-          {!courses.length && (
-            <p className="sidebar-text sidebar-hint">
-              Add a course to get started.
-            </p>
-          )}
-        </nav>
         <div className="sidebar-bottom">
+          <button className="nav-item" onClick={() => setAppearanceOpen(true)} title="Appearance"><Palette size={19}/><span className="sidebar-text">Appearance</span></button>
           <div className="sidebar-note sidebar-text">
             <span className="tiny-label">YOUR WORKSPACE</span>
             <p>
@@ -305,14 +297,14 @@ export default function App() {
                     })}
               </p>
             </div>
-            <button
+            {!["todos", "meetings", "notifications"].includes(view) && <button
               className="button primary"
-              onClick={newTask}
+              onClick={view === "courses" ? () => setDialog({ type: "course" }) : newTask}
               disabled={loading}
             >
               <Plus size={18} />
-              {courses.length ? "New task" : "Add a course"}
-            </button>
+              {view === "courses" || !courses.length ? "Add a course" : "New task"}
+            </button>}
           </div>
           {error && (
             <div className="error-banner" role="alert">
@@ -353,11 +345,13 @@ export default function App() {
                   now={now}
                   onTask={(t) => setDialog({ type: "detail", id: t.id })}
                   onStatus={status}
-                  onCourse={(id) => go(`course-${id}`)}
-                  onNewCourse={() => setDialog({ type: "course" })}
                   busy={busy}
                 />
               )}
+              {view === "meetings" && <MeetingsView/>}
+              {view === "notifications" && <NotificationsView/>}
+              {view === "todos" && <TodoView tasks={tasks} courses={courses} now={now} onTask={t => setDialog({ type: "detail", id: t.id })}/>}
+              {view === "courses" && <CoursesView courses={courses} tasks={tasks} onCourse={id => go(`course-${id}`)} onNewCourse={() => setDialog({ type: "course" })}/>}
               {view === "calendar" && (
                 <CalendarView
                   tasks={tasks}

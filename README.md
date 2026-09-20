@@ -2,6 +2,8 @@
 
 A complete local app using **FastAPI, SQLAlchemy, SQLite, React, TypeScript, Tailwind CSS, and Vite**. Dark mode is the default. The app needs no account or cloud service.
 
+Upgrading an existing installation? Follow [UPGRADE.md](UPGRADE.md) to preserve your coursework.
+
 ## Quick start
 
 With Docker Desktop running, open a terminal in this directory:
@@ -57,6 +59,7 @@ git commit -m "Build local academic dashboard"
 ```text
 academic-dashboard/
 ├── README.md
+├── UPGRADE.md
 ├── .env.example
 ├── .gitignore
 ├── docker-compose.yml
@@ -72,7 +75,11 @@ academic-dashboard/
 │   │   ├── database.py              # Engine, foreign keys, sessions
 │   │   ├── models.py                # SQLAlchemy entities
 │   │   ├── schemas.py               # Validated API inputs/outputs
-│   │   ├── main.py                  # Lifespan and all CRUD routes
+│   │   ├── main.py                  # Lifespan and coursework routes
+│   │   ├── meetings.py              # Time-zone-aware recurrence and CRUD
+│   │   ├── notifications.py         # SMTP configuration and daily scheduler
+│   │   ├── todos.py                 # Independent daily planner API
+│   │   ├── backgrounds.py           # Persistent media uploads
 │   │   ├── migrations.py            # Preserves initial-schema data on upgrade
 │   │   ├── init_db.py
 │   │   └── seed_demo.py             # Optional sample coursework
@@ -93,17 +100,25 @@ academic-dashboard/
         ├── styles.css               # Tailwind and shared theme
         ├── types.ts
         ├── components/
+        │   ├── InterfaceStyle.tsx    # Palettes, surfaces and density
+        │   ├── Appearance.tsx       # Backgrounds and motion settings
         │   ├── Forms.tsx            # Course/task forms and checklist editor
         │   ├── Modal.tsx
         │   ├── Pomodoro.tsx
         │   └── TaskCard.tsx
         ├── views/
+        │   ├── MeetingsView.tsx
+        │   ├── NotificationsView.tsx
+        │   ├── TodoView.tsx
+        │   ├── CoursesView.tsx
         │   ├── Dashboard.tsx
         │   ├── CourseView.tsx
         │   ├── CalendarView.tsx
         │   ├── KanbanView.tsx
         │   └── MatrixView.tsx
         └── lib/
+            ├── planner.ts
+            ├── planner.test.ts
             ├── api.ts
             ├── dates.ts
             ├── timer.ts
@@ -123,6 +138,11 @@ The executable definitions are in [models.py](backend/app/models.py), with conne
 | Task | id, course_id, title, description, task_type, due_at, status, priority, created_at, updated_at |
 | Subtask | id, task_id, title, is_completed, position, created_at, updated_at |
 | FocusSession | id, unique client_session_id, nullable task_id, started_at, ended_at, elapsed_seconds |
+| Todo | id, title, scheduled_for, progress (0–100), nullable task_id, created_at, updated_at |
+| BackgroundAsset | id, name, content_type, unique storage_name |
+| Meeting | id, title, start_local, timezone, duration, frequency, interval, count, until, place, link, notes, color, timestamps |
+| NotificationSettings | id, config JSON, encrypted secret |
+| EmailDelivery | id, unique delivery_key, kind, status, detail, created_at |
 
 ```text
 Course 1 ─── * Task 1 ─── * Subtask
@@ -135,6 +155,8 @@ Course 1 ─── * Task 1 ─── * Subtask
 - Priorities: low, medium, high.
 - Course deletion cascades to its tasks and checklists. Task deletion cascades to its checklist. The interface confirms course and task deletion.
 - Focus history survives task deletion with a null task link. A unique client UUID prevents duplicate focus saves on retries.
+- Daily reminders survive task deletion with a null source link. A task can be suggested into a given day only once. Personal items have no course requirement.
+- Background metadata lives in SQLite; media files live in `DATA_DIR/backgrounds`.
 - Each SQLite connection enables foreign keys. Startup enables WAL and creates missing tables.
 - Inputs require timezone-aware dates. The custom UTCDateTime type stores UTC and returns aware values; the UI displays dates in the device timezone.
 - Indexes support course, status, and due-date access. Checklist order uses position, then id.
@@ -152,6 +174,13 @@ Startup includes a transactional upgrade from the initial Step 2 schema to non-r
 | Method | Endpoint | Behavior |
 | --- | --- | --- |
 | GET | /api/health | Database health check |
+| GET / POST | /api/meetings | List or create meeting series |
+| PUT / DELETE | /api/meetings/{id} | Replace or delete a series |
+| GET | /api/meetings/occurrences | Expand timezone-aware start/end range (maximum 370 days) |
+| GET / PUT | /api/notifications | Read or save SMTP and schedule settings |
+| GET | /api/notifications/preview | Preview daily or unfinished report |
+| GET | /api/notifications/history | Latest 20 delivery attempts |
+| POST | /api/notifications/test | Send one test email using saved settings |
 | GET / POST | /api/courses | List or create courses |
 | GET / PATCH / DELETE | /api/courses/{id} | Read, edit, delete course |
 | GET / POST | /api/tasks | List or create tasks |
@@ -159,6 +188,11 @@ Startup includes a transactional upgrade from the initial Step 2 schema to non-r
 | POST | /api/tasks/{id}/subtasks | Add checklist item |
 | PATCH / DELETE | /api/subtasks/{id} | Edit/check/reorder or delete item |
 | GET / POST | /api/focus-sessions | Read or save work intervals |
+| GET / POST | /api/todos | List a day or add a personal/linked reminder |
+| PATCH / DELETE | /api/todos/{id} | Edit title/date/progress or delete |
+| GET / POST | /api/backgrounds | List media or upload raw binary with Content-Type and X-File-Name headers |
+| GET | /api/backgrounds/{id}/file | Serve uploaded media |
+| DELETE | /api/backgrounds/{id} | Delete media and metadata |
 
 Task responses include checklists, checklist progress, and total focus seconds. Course responses include completion counts and percentages. Read a checklist through its task response.
 
@@ -190,7 +224,13 @@ Retrying the same focus interval returns its original record. Reusing its identi
 
 ## 4. Frontend views
 
-- **Dashboard:** Due Today, Next 7 Days, overdue alerts, total completion, and course progress. Next 7 Days means tomorrow through the seventh following calendar day. An earlier-today deadline appears in both Due Today and Overdue until completed.
+- **Meetings:** recurring series with time zones, locations, links, agenda notes, end dates/counts and calendar integration.
+- **Email reminders:** SMTP setup, two daily schedules, report previews and delivery history; disabled until configured. See [UPGRADE.md](UPGRADE.md) for setup and scheduling behavior.
+- **Interface themes:** five palettes, three panel styles, device/dark/light modes, spacing and text controls.
+- **To-do list:** independent daily plans, today/future date selection, item progress, editing/moving, and one-click reminders from coursework due in less than a week. See [UPGRADE.md](UPGRADE.md) for date and suggestion rules.
+- **Courses:** dedicated gallery with syllabus previews, progress and next deadlines; add courses directly here.
+- **Appearance:** four backgrounds, persistent image/GIF/video uploads, dimming, mouse movement and click animations, and reduced-motion support.
+- **Dashboard:** Due Today, Next 7 Days, overdue alerts, and total completion. Next 7 Days means tomorrow through the seventh following calendar day. An earlier-today deadline appears in both Due Today and Overdue until completed.
 - **Course:** syllabus, progress, status filters, task creation/editing/deletion, and editable project checklists.
 - **Kanban:** To do / Doing / Done. Drag a grip with the mouse or briefly hold it on a touchscreen. A status menu provides a keyboard alternative. Changes persist through the API.
 - **Calendar:** month/week grids, previous/next/Today controls, course filtering, completed-task visibility. Select a day or “more” to inspect its week. Narrow screens scroll within the calendar and board regions.
@@ -276,9 +316,9 @@ npm test
 npm run build
 ```
 
-Tests cover CRUD, checklist progress, timezone conversion, filtering, invalid inputs, foreign keys, cascades, retained focus history, duplicate focus saves, date boundaries, matrix rules, paused time, and late timer wake-ups.
+Tests also cover daily-plan date validation, reminder independence, progress bounds, uploads and media cleanup. Tests cover CRUD, checklist progress, timezone conversion, filtering, invalid inputs, foreign keys, cascades, retained focus history, duplicate focus saves, date boundaries, matrix rules, paused time, and late timer wake-ups.
 
-Verified in the development environment: **13 backend tests and 9 frontend tests passed**, the production frontend bundle built, and the frontend/proxied API returned HTTP 200. Compose configuration validation passed. Container build/run could not be verified because this environment denies access to Docker's named pipe. Browser interaction and visual QA were not performed.
+Verified in the development environment: **21 backend tests and 12 frontend tests passed**, the production frontend bundle built, and the frontend/proxied API returned HTTP 200. Compose configuration validation passed. Container build/run could not be verified because this environment denies access to Docker's named pipe. Browser checks verified daily-plan creation, completion and partial progress, future-date persistence after reload, reminder addition, the Courses gallery, and background preset selection. Version 3 also verifies meeting CRUD, recurrence through daylight-saving changes and month ends, encrypted credentials, report content, duplicate prevention, skipped completed work and SMTP failure handling. Browser checks verified meeting creation/calendar editing, palette selection and report preview. SMTP transport is tested with mocks; no real email was sent. The existing Docker installation was not changed by these checks; preview data was isolated.
 
 If a restricted Windows environment blocks Vite's native config bundler from traversing parent directories, use:
 
