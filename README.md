@@ -77,6 +77,8 @@ academic-dashboard/
 │   │   ├── schemas.py               # Validated API inputs/outputs
 │   │   ├── main.py                  # Lifespan and coursework routes
 │   │   ├── meetings.py              # Time-zone-aware recurrence and CRUD
+│   │   ├── email_reports.py         # HTML tables and PNG report rendering
+│   │   ├── music.py                 # Audio library and radio discovery
 │   │   ├── notifications.py         # SMTP configuration and daily scheduler
 │   │   ├── todos.py                 # Independent daily planner API
 │   │   ├── backgrounds.py           # Persistent media uploads
@@ -100,6 +102,7 @@ academic-dashboard/
         ├── styles.css               # Tailwind and shared theme
         ├── types.ts
         ├── components/
+        │   ├── MusicPlayer.tsx       # Persistent audio player and library
         │   ├── InterfaceStyle.tsx    # Palettes, surfaces and density
         │   ├── Appearance.tsx       # Backgrounds and motion settings
         │   ├── Forms.tsx            # Course/task forms and checklist editor
@@ -140,6 +143,7 @@ The executable definitions are in [models.py](backend/app/models.py), with conne
 | FocusSession | id, unique client_session_id, nullable task_id, started_at, ended_at, elapsed_seconds |
 | Todo | id, title, scheduled_for, progress (0–100), nullable task_id, created_at, updated_at |
 | BackgroundAsset | id, name, content_type, unique storage_name |
+| MusicTrack | id, name, content_type, unique storage_name |
 | Meeting | id, title, start_local, timezone, duration, frequency, interval, count, until, place, link, notes, color, timestamps |
 | NotificationSettings | id, config JSON, encrypted secret |
 | EmailDelivery | id, unique delivery_key, kind, status, detail, created_at |
@@ -174,6 +178,10 @@ Startup includes a transactional upgrade from the initial Step 2 schema to non-r
 | Method | Endpoint | Behavior |
 | --- | --- | --- |
 | GET | /api/health | Database health check |
+| GET / POST | /api/music | List uploaded audio or upload raw audio bytes |
+| GET | /api/music/{id}/file | Stream audio with byte-range support |
+| DELETE | /api/music/{id} | Remove an uploaded track |
+| GET | /api/music/radio/search | Search public stations by q and genre |
 | GET / POST | /api/meetings | List or create meeting series |
 | PUT / DELETE | /api/meetings/{id} | Replace or delete a series |
 | GET | /api/meetings/occurrences | Expand timezone-aware start/end range (maximum 370 days) |
@@ -225,7 +233,8 @@ Retrying the same focus interval returns its original record. Reusing its identi
 ## 4. Frontend views
 
 - **Meetings:** recurring series with time zones, locations, links, agenda notes, end dates/counts and calendar integration.
-- **Email reminders:** SMTP setup, two daily schedules, report previews and delivery history; disabled until configured. See [UPGRADE.md](UPGRADE.md) for setup and scheduling behavior.
+- **Music:** searchable uploads, favorites, online radio discovery and persistent playback across views.
+- **Email reminders:** SMTP setup, two daily schedules, readable HTML tables, PNG attachments, previews and delivery history; today-only unfinished to-dos, disabled until configured. See [UPGRADE.md](UPGRADE.md) for setup and scheduling behavior.
 - **Interface themes:** five palettes, three panel styles, device/dark/light modes, spacing and text controls.
 - **To-do list:** independent daily plans, today/future date selection, item progress, editing/moving, and one-click reminders from coursework due in less than a week. See [UPGRADE.md](UPGRADE.md) for date and suggestion rules.
 - **Courses:** dedicated gallery with syllabus previews, progress and next deadlines; add courses directly here.
@@ -318,7 +327,7 @@ npm run build
 
 Tests also cover daily-plan date validation, reminder independence, progress bounds, uploads and media cleanup. Tests cover CRUD, checklist progress, timezone conversion, filtering, invalid inputs, foreign keys, cascades, retained focus history, duplicate focus saves, date boundaries, matrix rules, paused time, and late timer wake-ups.
 
-Verified in the development environment: **21 backend tests and 12 frontend tests passed**, the production frontend bundle built, and the frontend/proxied API returned HTTP 200. Compose configuration validation passed. Container build/run could not be verified because this environment denies access to Docker's named pipe. Browser checks verified daily-plan creation, completion and partial progress, future-date persistence after reload, reminder addition, the Courses gallery, and background preset selection. Version 3 also verifies meeting CRUD, recurrence through daylight-saving changes and month ends, encrypted credentials, report content, duplicate prevention, skipped completed work and SMTP failure handling. Browser checks verified meeting creation/calendar editing, palette selection and report preview. SMTP transport is tested with mocks; no real email was sent. The existing Docker installation was not changed by these checks; preview data was isolated.
+Verified in the development environment: **26 backend tests and 12 frontend tests passed**, the production frontend bundle built, and the frontend/proxied API returned HTTP 200. Compose configuration validation passed. Container build/run could not be verified because this environment denies access to Docker's named pipe. Browser checks verified daily-plan creation, completion and partial progress, future-date persistence after reload, reminder addition, the Courses gallery, and background preset selection. Version 3 also verifies meeting CRUD, recurrence through daylight-saving changes and month ends, encrypted credentials, report content, duplicate prevention, skipped completed work and SMTP failure handling. Browser checks verified meeting creation/calendar editing, palette selection and report preview. Version 4 adds tests for today-only filtering across timezone boundaries, HTML escaping, MIME alternatives and PNG attachments, image pagination, audio validation/range requests/deletion, and radio URL filtering. SMTP transport is tested with mocks; no real email was sent. Version 4 browser playback verification was interrupted; audible playback and live station availability were not verified. The existing Docker installation was not changed by these checks; preview data was isolated.
 
 If a restricted Windows environment blocks Vite's native config bundler from traversing parent directories, use:
 

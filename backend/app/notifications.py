@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from .database import data_dir, get_db
 from .models import EmailDelivery, NotificationSettings, Task, TaskStatus, Todo
 from .meetings import MeetingInput
+from .email_reports import html_report, report_images
 
 router = APIRouter(prefix='/api/notifications', tags=['Email notifications'])
 DB = Annotated[Session, Depends(get_db)]
@@ -40,7 +41,7 @@ class Settings(BaseModel):
     unfinished: bool = True
     unfinished_time: str = '20:00'
     upcoming_days: int = Field(default=7, ge=1, le=30)
-    include_past_todos: bool = True
+    include_past_todos: bool = False  # Legacy input accepted, always ignored.
     password: Annotated[str, StringConstraints(strip_whitespace=False, max_length=2000)] | None = None
     clear_password: bool = False
 
@@ -77,6 +78,7 @@ def cipher():
     return Fernet(KEY_PATH.read_bytes())
 
 def public(row, config):
+    config.include_past_todos = False
     return {**config.model_dump(exclude={'password', 'clear_password'}), 'has_password': bool(row and row.secret)}
 
 @router.get('')
@@ -96,24 +98,40 @@ def save_settings(body: Settings, db: DB):
         db.add(row); db.commit()
     return public(row, body)
 
-def report(db, config, kind, now):
+def report_content(db, config, kind, now):
     local = now.astimezone(ZoneInfo(config.timezone)); today = local.date()
-    query = select(Todo).where(Todo.scheduled_for <= today if config.include_past_todos else Todo.scheduled_for == today)
-    todos = list(db.scalars(query.order_by(Todo.scheduled_for)))
-    if kind == 'unfinished': todos = [t for t in todos if t.progress < 100]
-    else: todos = [t for t in todos if t.scheduled_for == today or t.progress < 100]
+    todos = list(db.scalars(select(Todo).where(Todo.scheduled_for == today, Todo.progress < 100).order_by(Todo.id)))
     tasks = list(db.scalars(select(Task).where(Task.status != TaskStatus.COMPLETED, Task.due_at < now + timedelta(days=config.upcoming_days)).order_by(Task.due_at)))
-    title = f'Studyspace · {"Unfinished tasks" if kind == "unfinished" else "Daily report"} · {today}'
-    lines = [f'Your study update ({config.timezone})', '', 'TO-DO LIST']
-    lines += [f'- {t.title} — {t.progress}% complete (plan: {t.scheduled_for})' for t in todos] or ['No items to report.']
-    lines += ['', 'UPCOMING AND OVERDUE COURSEWORK']
-    lines += [f'- {t.title} — {t.due_at.astimezone(ZoneInfo(config.timezone)):%Y-%m-%d %H:%M} ({"overdue" if t.due_at < now else "upcoming"})' for t in tasks] or ['No unfinished coursework due in this window.']
-    lines += ['', 'Manage delivery times or disable email in Studyspace → Email reminders.']
-    return title, '\n'.join(lines), bool(todos or tasks)
+    heading = 'Unfinished work' if kind == 'unfinished' else 'Your daily study report'
+    subject = f'Studyspace · {heading} · {today}'
+    def deadline(task):
+        return task.due_at.astimezone(ZoneInfo(config.timezone)).strftime('%d %b %Y, %H:%M')
+    todo_rows = []
+    for todo in todos:
+        linked = db.get(Task, todo.task_id) if todo.task_id else None
+        state = 'Not started' if todo.progress == 0 else 'In progress'
+        todo_rows.append((todo.title, f'{state} · {todo.progress}%', deadline(linked) if linked else 'No deadline · planned today'))
+    task_rows = [(t.title, ('Overdue · ' if t.due_at < now else '') + t.status.value.replace('_', ' ').capitalize(), deadline(t)) for t in tasks]
+    sections = [("Today’s unfinished to-dos", todo_rows), ('Upcoming & overdue coursework', task_rows)]
+    lines = [heading, f'{today} · {config.timezone}', '', 'TODAY’S UNFINISHED TO-DO LIST', 'Task | Status | Deadline']
+    lines += [' | '.join(row) for row in todo_rows] or ['No unfinished to-dos today.']
+    lines += ['', 'UPCOMING & OVERDUE COURSEWORK', 'Task | Status | Deadline']
+    lines += [' | '.join(row) for row in task_rows] or ['No coursework to report.']
+    return {'subject': subject, 'body': '\n'.join(lines), 'has_work': bool(todos or tasks), 'html': html_report(heading, str(today), config.timezone, sections), 'heading': heading, 'date': str(today), 'zone': config.timezone, 'sections': sections}
 
-def deliver(config, secret, subject, body):
+
+def report(db, config, kind, now):
+    content = report_content(db, config, kind, now)
+    return content['subject'], content['body'], content['has_work']
+
+
+def deliver(config, secret, subject, body, rich=None):
     message = EmailMessage(); message['From'] = config.sender; message['To'] = config.recipient; message['Subject'] = subject
     message.set_content(body)
+    if rich:
+        message.add_alternative(rich["html"], subtype="html")
+        for i, image in enumerate(report_images(rich["heading"], rich["date"], rich["zone"], rich["sections"]), 1):
+            message.add_attachment(image, maintype="image", subtype="png", filename=f"studyspace-{rich['date']}-{i}.png")
     smtp_class = smtplib.SMTP_SSL if config.security == 'ssl' else smtplib.SMTP
     kwargs = {'context': ssl.create_default_context()} if config.security == 'ssl' else {}
     with smtp_class(config.host, config.port, timeout=20, **kwargs) as smtp:
@@ -124,8 +142,8 @@ def deliver(config, secret, subject, body):
 @router.get('/preview')
 def preview(db: DB, kind: Literal['daily', 'unfinished'] = 'daily'):
     _, config = get_settings(db)
-    subject, body, has_work = report(db, config, kind, datetime.now(timezone.utc))
-    return {'subject': subject, 'body': body, 'has_work': has_work}
+    content = report_content(db, config, kind, datetime.now(timezone.utc))
+    return {key: content[key] for key in ('subject', 'body', 'html', 'has_work')}
 
 @router.get('/history')
 def history(db: DB):
@@ -139,7 +157,8 @@ def test_email(db: DB):
     attempt = EmailDelivery(delivery_key=str(uuid4()), kind='test', status='sending')
     db.add(attempt); db.commit()
     try:
-        deliver(config, row.secret, 'Studyspace test email', 'Your Studyspace email connection is working.')
+        content = report_content(db, config, 'daily', datetime.now(timezone.utc))
+        deliver(config, row.secret, 'TEST · ' + content['subject'], content['body'], content)
         attempt.status = 'sent'; attempt.detail = 'Accepted by SMTP server'
     except Exception:
         attempt.status = 'failed'; attempt.detail = 'Connection or authentication failed. Check host, port, credentials and network.'
@@ -157,12 +176,13 @@ def tick(engine, now=None):
             if not enabled or local.strftime('%H:%M') < at: continue
             key = f'{local.date()}:{kind}'
             if db.scalar(select(EmailDelivery.id).where(EmailDelivery.delivery_key == key)): continue
-            subject, body, work = report(db, config, kind, now)
+            content = report_content(db, config, kind, now)
+            subject, body, work = content['subject'], content['body'], content['has_work']
             attempt = EmailDelivery(delivery_key=key, kind=kind, status='sending' if kind == 'daily' or work else 'skipped')
             db.add(attempt); db.commit()  # claim before SMTP; never resend an ambiguous delivery automatically
             if attempt.status == 'skipped': continue
             try:
-                deliver(config, row.secret, subject, body)
+                deliver(config, row.secret, subject, body, content)
                 attempt.status = 'sent'; attempt.detail = 'Accepted by SMTP server'
             except Exception:
                 attempt.status = 'failed'; attempt.detail = 'SMTP failed; check settings and send a test. Automatic retry disabled to avoid duplicate email.'

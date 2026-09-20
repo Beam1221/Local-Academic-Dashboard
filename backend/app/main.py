@@ -13,6 +13,7 @@ from .database import Base, engine, get_db
 from .models import Course, FocusSession, Subtask, Task, TaskStatus
 from .migrations import ensure_stable_ids
 from .todos import router as todos_router
+from .music import router as music_router
 from .backgrounds import router as backgrounds_router
 from .meetings import router as meetings_router
 from .notifications import router as notifications_router, scheduler
@@ -42,6 +43,7 @@ app = FastAPI(title="Studyspace API", version="1.0.0", lifespan=lifespan,
               docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
 DB = Annotated[Session, Depends(get_db)]
 app.include_router(todos_router)
+app.include_router(music_router)
 app.include_router(backgrounds_router)
 app.include_router(meetings_router)
 app.include_router(notifications_router)

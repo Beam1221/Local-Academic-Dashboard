@@ -49,6 +49,14 @@ CREATE TABLE meetings (
 	updated_at DATETIME NOT NULL
 );
 
+CREATE TABLE music_tracks (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	name VARCHAR(255) NOT NULL, 
+	content_type VARCHAR(50) NOT NULL, 
+	storage_name VARCHAR(50) NOT NULL, 
+	UNIQUE (storage_name)
+);
+
 CREATE TABLE notification_settings (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
 	config TEXT NOT NULL, 

@@ -1,6 +1,6 @@
 # Update your existing Docker installation
 
-This update adds recurring meetings, interface themes, and scheduled email reminders, alongside the daily planner and Courses gallery. Existing coursework remains in the same SQLite database. Startup creates missing tables without replacing your courses or tasks.
+This update adds readable email reports and a music library/player, alongside meetings, themes, the daily planner and Courses gallery. Existing coursework remains in the same SQLite database. Startup creates missing tables without replacing your courses or tasks.
 
 1. In your existing project directory, back up your database:
 
@@ -9,7 +9,7 @@ This update adds recurring meetings, interface themes, and scheduled email remin
    docker compose cp backend:/data/academic-backup.db ./academic-backup.db
    ```
 
-2. Extract `academic-dashboard-v3.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
+2. Extract `academic-dashboard-v4.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
 
 3. From that same project folder, rebuild:
 
@@ -52,7 +52,7 @@ Use a fresh backup destination each time. Preserve all files together when resto
 
 ### Email scheduling and credentials
 
-Choose separate daily-report and unfinished-work times, an IANA time zone (for example `Asia/Dubai`), the upcoming coursework window, and whether unfinished to-dos from previous days should be included. Daily reports include today's plan and unfinished coursework in the selected window, including overdue assignments. Unfinished reminders omit completed to-dos and are skipped when no unfinished to-do or coursework remains in scope. Future daily-plan items are not included before their plan day.
+Choose separate daily-report and unfinished-work times, an IANA time zone (for example `Asia/Dubai`), the upcoming coursework window, and the upcoming coursework window. Daily reports include only today's unfinished to-dos and unfinished coursework in the selected window, including overdue assignments. Unfinished reminders omit completed to-dos and are skipped when no unfinished to-do or coursework remains in scope. Future daily-plan items are not included before their plan day.
 
 The backend checks every 30 seconds. Keep Docker, your computer, and internet access running. The browser may be closed. A missed time is caught up later on the same local day; previous days are not replayed. There is at most one attempt per report type per local day, persisted across restarts. Changing a send time after that day's attempt does not trigger another attempt. Failed or interrupted sends are not retried automatically because SMTP acceptance can be ambiguous; inspect Recent deliveries and use the test button after correcting settings. A `sent` status means the SMTP server accepted the message, not a guarantee of inbox delivery.
 
@@ -63,3 +63,26 @@ Run one backend worker, as configured in the supplied Dockerfile. Disable schedu
 ### Design references
 
 The implementation adapts useful patterns from [Google Calendar recurrence](https://support.google.com/calendar/answer/37115), [Google Calendar time zones](https://support.google.com/calendar/answer/37064), [Slack themes](https://slack.com/help/articles/205166337-Change-your-Slack-theme), [Slack compact display](https://slack.com/help/articles/213893898-Change-how-messages-are-displayed), [Notion appearance preferences](https://www.notion.com/en-gb/help/account-settings), and [Todoist notification settings](https://www.todoist.com/help/todoist/features/manage-your-notifications-in-todoist-QxQGXkMu).
+
+
+## New in version 4: clearer email reports and Music
+
+### Email changes
+
+Both daily reports and unfinished-work reminders include **only unfinished to-dos planned for the local date when the email is sent**, using the configured email time zone. Older plans, future plans and completed to-dos are excluded. The legacy previous-days toggle is removed and ignored even if it was enabled before upgrading. Existing SMTP settings and encrypted passwords are preserved.
+
+Reports have readable HTML tables with Task, Status and Deadline columns, a plain-text fallback, and attached PNG copies. Long reports are split into image pages rather than shrinking the font. All three versions use the same data. The setup screen previews the formatted HTML. Send test email now sends a sample report using your current data, marked TEST.
+
+For reminders linked to coursework, Deadline is the linked assignment's due time. Personal to-dos have no deadline field in this version and are clearly labeled **No deadline · planned today**. Upcoming and overdue coursework remains in its own table and continues to use your configured upcoming-days window. Today's to-do completion is independent from assignment completion.
+
+### Music
+
+Open **Music** in the sidebar. Upload MP3, WAV, Ogg, FLAC, M4A or WebM audio (up to 100 MB per file), search your uploaded songs, and click a song to play. The bottom player stays mounted when you navigate to other sections. It offers pause/resume, seeking, previous/next, shuffle, single-track repeat and volume controls. Playback starts only after a click and does not resume automatically after reloading or closing the app. Browser audio codec support varies; unsupported files show an error.
+
+**Online radio** searches the public Radio Browser directory by station name and genre. It is live radio, not an on-demand commercial song catalogue. Pick a genre or search and choose a station; no API key is required. Directory and stream availability depend on external services. The backend queries only the directory; your browser connects directly to the selected station. Only HTTPS stream URLs are offered. No coursework is sent to the directory. Uploaded songs continue to work without internet access.
+
+Favorites and volume are browser-local. Uploaded files and their metadata persist in the existing Docker volume at `/data/music` and in SQLite. Include that folder when backing up `/data`. Removing an uploaded song deletes it from the shared library. Use audio files you are permitted to store and play.
+
+The image renderer adds Pillow and DejaVu fonts to the Docker image; rebuild both services. The database gains one new music table without replacing coursework. Nginx accepts uploads up to 101 MB; the audio API enforces its own 100 MB limit and the background API retains its 25 MB limit.
+
+Reference: [Radio Browser API](https://docs.radio-browser.info/).

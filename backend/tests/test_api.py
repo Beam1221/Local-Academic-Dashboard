@@ -26,6 +26,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr("app.notifications.KEY_PATH", tmp_path / "email.key")
     monkeypatch.setattr("app.main.engine", engine)
     monkeypatch.setattr("app.backgrounds.ASSET_DIR", tmp_path / "backgrounds")
+    monkeypatch.setattr("app.music.ASSET_DIR", tmp_path / "music")
 
     def test_db():
         with Session(engine) as db:
@@ -325,3 +326,87 @@ def test_email_failure_is_visible_and_not_retried(client, monkeypatch):
     history=client.get('/api/notifications/history').json()
     assert len(history)==1 and history[0]['status']=='failed'
     assert 'private-password' not in str(history)
+
+
+
+def test_report_today_only_legacy_setting_timezone_and_deadline(client):
+    from app.main import engine
+    from app.models import Todo
+    from app.notifications import Settings, report_content
+    now=datetime(2026,9,20,21,0,tzinfo=timezone.utc)  # Sep 21 in Dubai
+    with Session(engine) as db:
+        c=Course(name='Test');db.add(c);db.flush()
+        task=Task(course_id=c.id,title='Linked assignment',due_at=now+timedelta(days=1));db.add(task);db.flush()
+        db.add_all([Todo(title='OLD PLAN',scheduled_for=datetime(2026,9,20).date(),progress=0),Todo(title='Today <script>alert(1)</script>',scheduled_for=datetime(2026,9,21).date(),progress=50,task_id=task.id),Todo(title='DONE TODAY',scheduled_for=datetime(2026,9,21).date(),progress=100),Todo(title='FUTURE PLAN',scheduled_for=datetime(2026,9,22).date(),progress=0)])
+        db.commit()
+        for kind in ['daily','unfinished']:
+            result=report_content(db,Settings(include_past_todos=True),kind,now)
+            assert 'OLD PLAN' not in result['body'] and 'FUTURE PLAN' not in result['body'] and 'DONE TODAY' not in result['body']
+            assert 'In progress' in result['body'] and '22 Sep 2026, 01:00' in result['body']
+            assert '<script>' not in result['html'] and '&lt;script&gt;' in result['html']
+            assert 'Deadline' in result['html'] and '<table' in result['html']
+
+
+def test_rich_email_html_png_and_plain_fallback(client, monkeypatch):
+    from app.notifications import Settings, deliver, report_content
+    from app.main import engine
+    sent=[]
+    class SMTP:
+        def __init__(self,*args,**kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def ehlo(self): pass
+        def starttls(self,**kwargs): assert kwargs['context'].check_hostname
+        def send_message(self,message): sent.append(message)
+    monkeypatch.setattr('app.notifications.smtplib.SMTP',SMTP)
+    with Session(engine) as db: content=report_content(db,Settings(),'daily',datetime.now(timezone.utc))
+    deliver(Settings(sender='me@example.com',recipient='me@example.com'),'',content['subject'],content['body'],content)
+    parts=list(sent[0].walk())
+    assert any(p.get_content_type()=='text/plain' for p in parts)
+    assert any(p.get_content_type()=='text/html' for p in parts)
+    png=next(p for p in parts if p.get_content_type()=='image/png')
+    assert png.get_payload(decode=True).startswith(b'\x89PNG')
+    assert png.get_filename().endswith('.png')
+
+
+def test_report_image_pagination():
+    from app.email_reports import report_images
+    from PIL import Image
+    from io import BytesIO
+    rows=[('A long coursework title ' * 8,'In progress · 50%','21 Sep 2026, 23:59') for _ in range(20)]
+    pages=report_images('Study report','2026-09-20','Asia/Dubai',[('Today',rows)])
+    assert len(pages)>1
+    for page in pages:
+        with Image.open(BytesIO(page)) as im: assert im.width == 1200 and 400 <= im.height <= 1700
+
+
+def test_music_upload_range_validation_and_delete(client, monkeypatch):
+    import io,wave
+    with io.BytesIO() as buffer:
+        with wave.open(buffer,'wb') as wav:
+            wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(8000);wav.writeframes(b'\0\0'*800)
+        data=buffer.getvalue()
+    response=client.post('/api/music',content=data,headers={'content-type':'audio/wav','x-file-name':'Study%20song.wav'})
+    assert response.status_code==201
+    item=response.json();assert item['name']=='Study song.wav'
+    assert client.get(item['url']).content==data
+    part=client.get(item['url'],headers={'Range':'bytes=0-15'})
+    assert part.status_code==206 and part.content==data[:16]
+    assert client.post('/api/music',content=b'not audio',headers={'content-type':'audio/wav'}).status_code==415
+    assert client.post('/api/music',content=data,headers={'content-type':'text/html'}).status_code==415
+    monkeypatch.setattr('app.music.MAX_BYTES',16)
+    assert client.post('/api/music',content=data,headers={'content-type':'audio/wav'}).status_code==413
+    assert len(client.get('/api/music').json())==1
+    assert client.delete('/api/music/'+str(item['id'])).status_code==204
+    assert client.get(item['url']).status_code==404
+
+
+def test_radio_directory_filters_unsafe_urls(client,monkeypatch):
+    import json
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def read(self,*args): return json.dumps([{'stationuuid':'1','name':'Jazz','url_resolved':'https://radio.example.com/live'}, {'stationuuid':'2','name':'Unsafe','url_resolved':'javascript:alert(1)'},{'stationuuid':'3','name':'Local','url_resolved':'https://127.0.0.1/'}]).encode()
+    monkeypatch.setattr('urllib.request.urlopen',lambda *args,**kwargs:Response())
+    rows=client.get('/api/music/radio/search?q=jazz').json()
+    assert len(rows)==1 and rows[0]['name']=='Jazz'

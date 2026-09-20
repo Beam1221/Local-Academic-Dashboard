@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   BookOpen,
+  Headphones,
   Users,
   Mail,
   ListTodo,
@@ -27,6 +28,7 @@ import { CoursesView } from "./views/CoursesView";
 import { Appearance } from "./components/Appearance";
 import { Dashboard } from "./views/Dashboard";
 import { CourseView } from "./views/CourseView";
+import { MusicPlayer } from "./components/MusicPlayer";
 import { MeetingsView } from "./views/MeetingsView";
 import { NotificationsView } from "./views/NotificationsView";
 import { CalendarView } from "./views/CalendarView";
@@ -35,7 +37,7 @@ import { MatrixView } from "./views/MatrixView";
 import { Pomodoro } from "./components/Pomodoro";
 import { registerWorkspaceTools } from "./lib/webmcp";
 
-type View = "meetings" | "notifications" | "todos" | "courses" | "dashboard" | "calendar" | "board" | "matrix" | `course-${number}`;
+type View = "music" | "meetings" | "notifications" | "todos" | "courses" | "dashboard" | "calendar" | "board" | "matrix" | `course-${number}`;
 type Dialog =
   | { type: "course"; course?: Course }
   | { type: "task"; task?: Task }
@@ -49,13 +51,14 @@ const navigation = [
   ["courses", "Courses", BookOpen],
   ["calendar", "Calendar", CalendarDays],
   ["meetings", "Meetings", Users],
+  ["music", "Music", Headphones],
   ["notifications", "Email reminders", Mail],
   ["board", "Kanban board", Columns3],
   ["matrix", "Priority matrix", Grid2X2],
 ] as const;
 function currentView(): View {
   const value = location.hash.slice(1);
-  return /^(dashboard|todos|courses|calendar|meetings|notifications|board|matrix|course-\d+)$/.test(value)
+  return /^(dashboard|todos|courses|calendar|music|meetings|notifications|board|matrix|course-\d+)$/.test(value)
     ? (value as View)
     : "dashboard";
 }
@@ -297,7 +300,7 @@ export default function App() {
                     })}
               </p>
             </div>
-            {!["todos", "meetings", "notifications"].includes(view) && <button
+            {!["todos", "meetings", "notifications", "music"].includes(view) && <button
               className="button primary"
               onClick={view === "courses" ? () => setDialog({ type: "course" }) : newTask}
               disabled={loading}
@@ -348,6 +351,7 @@ export default function App() {
                   busy={busy}
                 />
               )}
+              <MusicPlayer active={view === "music"} onOpen={()=>go("music")}/>
               {view === "meetings" && <MeetingsView/>}
               {view === "notifications" && <NotificationsView/>}
               {view === "todos" && <TodoView tasks={tasks} courses={courses} now={now} onTask={t => setDialog({ type: "detail", id: t.id })}/>}
