@@ -31,6 +31,14 @@ CREATE TABLE email_deliveries (
 	UNIQUE (delivery_key)
 );
 
+CREATE TABLE focus_sounds (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	name VARCHAR(255) NOT NULL, 
+	content_type VARCHAR(50) NOT NULL, 
+	storage_name VARCHAR(50) NOT NULL, 
+	UNIQUE (storage_name)
+);
+
 CREATE TABLE meetings (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
 	title VARCHAR(200) NOT NULL, 

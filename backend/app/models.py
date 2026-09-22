@@ -200,3 +200,11 @@ class MusicTrack(Base):
     name: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(50))
     storage_name: Mapped[str] = mapped_column(String(50), unique=True)
+
+class FocusSound(Base):
+    __tablename__ = 'focus_sounds'
+    __table_args__ = {'sqlite_autoincrement': True}
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(50))
+    storage_name: Mapped[str] = mapped_column(String(50), unique=True)

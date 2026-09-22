@@ -15,7 +15,7 @@ def html_report(title, date_label, zone, sections):
         if not rows: body = '<tr><td colspan="3" style="padding:18px;color:#64748b">Nothing to report here.</td></tr>'
         return f'<h2 style="font-size:19px;margin:28px 0 12px">{escape(heading)} <span style="color:#64748b;font-size:14px">({len(rows)})</span></h2><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e4e7ee;border-collapse:collapse;table-layout:fixed"><colgroup><col style="width:46%"><col style="width:25%"><col style="width:29%"></colgroup><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>'
     content = ''.join(table(heading, rows) for heading, rows in sections)
-    return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#eff2f7;font-family:Arial,Helvetica,sans-serif;color:#202638;font-size:15px;line-height:1.6"><table role="presentation" width="100%"><tr><td style="padding:24px 12px"><table role="presentation" width="100%" style="max-width:760px;margin:auto;background:#fff;border-radius:16px"><tr><td style="padding:28px"><p style="color:#6d52b6;font-weight:bold;letter-spacing:2px;font-size:12px">STUDYSPACE / YOUR DAY</p><h1 style="font-size:28px;line-height:1.2;margin:12px 0">{escape(title)}</h1><p style="color:#64748b">{escape(date_label)} · {escape(zone)}<br>Only unfinished to-dos planned for this date are included.</p>{content}<p style="margin-top:28px;font-size:12px;color:#64748b">PNG copies are attached. Times use {escape(zone)}. Manage delivery in Studyspace → Email reminders.</p></td></tr></table></td></tr></table></body></html>'''
+    return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#eff2f7;font-family:Arial,Helvetica,sans-serif;color:#202638;font-size:15px;line-height:1.6"><table role="presentation" width="100%"><tr><td style="padding:24px 12px"><table role="presentation" width="100%" style="max-width:760px;margin:auto;background:#fff;border-radius:16px"><tr><td style="padding:28px"><p style="color:#6d52b6;font-weight:bold;letter-spacing:2px;font-size:12px">STUDYSPACE / YOUR DAY</p><h1 style="font-size:28px;line-height:1.2;margin:12px 0">{escape(title)}</h1><p style="color:#64748b">{escape(date_label)} · {escape(zone)}<br>Only unfinished to-dos from today and yesterday are included.</p>{content}<p style="margin-top:28px;font-size:12px;color:#64748b">PNG copies are attached. Times use {escape(zone)}. Manage delivery in Studyspace → Email reminders.</p></td></tr></table></td></tr></table></body></html>'''
 
 
 def font(size, bold=False):
@@ -62,7 +62,7 @@ def report_images(title, date_label, zone, sections):
         y = 220
     def finish():
         height = min(1700, max(400, y + 130))
-        draw.text((65, height - 65), f'Today’s plan only · Studyspace · Page {len(pages)+1}',font=normal, fill='#596579')
+        draw.text((65, height - 65), f'Today + yesterday · Studyspace · Page {len(pages)+1}',font=normal, fill='#596579')
         data = BytesIO(); canvas.crop((0, 0, 1200, height)).save(data, format='PNG'); pages.append(data.getvalue())
     def section_header(name):
         nonlocal y

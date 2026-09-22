@@ -1,3 +1,4 @@
+import {useFocusSound} from "./FocusSound";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Coffee,
@@ -38,6 +39,9 @@ export function Pomodoro({
   compact: boolean;
   refresh: () => Promise<void>;
 }) {
+  const sound=useFocusSound();
+  const soundRef=useRef(sound);soundRef.current=sound;
+  const sounded=useRef<string|null>(null);
   const [state, setState] = useState(readTimer);
   const [now, setNow] = useState(Date.now());
   const [expanded, setExpanded] = useState(false);
@@ -79,6 +83,7 @@ export function Pomodoro({
       setNow(time);
       const current = stateRef.current;
       if (current.runningSince !== null && remaining(current, time) === 0) {
+        if(sounded.current!==current.sessionId){sounded.current=current.sessionId;void soundRef.current.play();}
         setNotice(
           current.mode === "work"
             ? "Session complete. Take a five-minute break."
@@ -164,6 +169,7 @@ export function Pomodoro({
   const seconds = (Math.ceil(left / 1000) % 60).toString().padStart(2, "0");
   const total = state.mode === "work" ? WORK_MS : BREAK_MS;
   function toggle() {
+    if(!running)void sound.arm();
     const time = Date.now();
     setNow(time);
     setNotice("");
@@ -336,6 +342,7 @@ export function Pomodoro({
             </button>
           )}
         </div>
+        {sound.controls}
         {notice && (
           <p className="timer-notice" role="status">
             {notice}

@@ -1,3 +1,4 @@
+import {applyInterface,readInterface} from "../lib/interfaceTheme";
 import { InterfaceStyle } from "./InterfaceStyle";
 import { useEffect, useRef, useState } from 'react';
 import { Check, ImagePlus, Trash2 } from 'lucide-react';
@@ -13,7 +14,7 @@ function readPreferences(): Preferences {
   try { const value = JSON.parse(localStorage.getItem('studyspace-appearance') || 'null'); return value && typeof value.background === 'string' ? { background: value.background, motion: value.motion !== false, dim: typeof value.dim === 'number' ? Math.max(30, Math.min(90, value.dim)) : 65 } : defaults; } catch { return defaults; }
 }
 export function Appearance({ open, onClose, mode, onMode }: { open: boolean; onClose: () => void; mode: string; onMode: (mode: "dark" | "light" | "system") => void }) {
-  useEffect(() => { try { const style = JSON.parse(localStorage.getItem('studyspace-interface') || '{}'); const root = document.documentElement; root.dataset.palette = style.palette || 'violet'; root.dataset.design = style.design || 'soft'; root.dataset.density = style.density || 'comfortable'; root.dataset.textSize = style.textSize || 'standard'; } catch { /* Defaults */ } }, []);
+  useEffect(() => { const apply=()=>applyInterface(readInterface());apply();const observer=new MutationObserver(apply);observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});return()=>observer.disconnect(); }, []);
   const [preferences, setPreferences] = useState(readPreferences);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);

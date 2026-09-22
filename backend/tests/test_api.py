@@ -27,6 +27,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr("app.main.engine", engine)
     monkeypatch.setattr("app.backgrounds.ASSET_DIR", tmp_path / "backgrounds")
     monkeypatch.setattr("app.music.ASSET_DIR", tmp_path / "music")
+    monkeypatch.setattr("app.focus_sounds.ASSET_DIR", tmp_path / "focus-sounds")
 
     def test_db():
         with Session(engine) as db:
@@ -329,7 +330,7 @@ def test_email_failure_is_visible_and_not_retried(client, monkeypatch):
 
 
 
-def test_report_today_only_legacy_setting_timezone_and_deadline(client):
+def test_report_two_days_legacy_setting_timezone_and_deadline(client):
     from app.main import engine
     from app.models import Todo
     from app.notifications import Settings, report_content
@@ -337,11 +338,12 @@ def test_report_today_only_legacy_setting_timezone_and_deadline(client):
     with Session(engine) as db:
         c=Course(name='Test');db.add(c);db.flush()
         task=Task(course_id=c.id,title='Linked assignment',due_at=now+timedelta(days=1));db.add(task);db.flush()
-        db.add_all([Todo(title='OLD PLAN',scheduled_for=datetime(2026,9,20).date(),progress=0),Todo(title='Today <script>alert(1)</script>',scheduled_for=datetime(2026,9,21).date(),progress=50,task_id=task.id),Todo(title='DONE TODAY',scheduled_for=datetime(2026,9,21).date(),progress=100),Todo(title='FUTURE PLAN',scheduled_for=datetime(2026,9,22).date(),progress=0)])
+        db.add_all([Todo(title='OLD PLAN',scheduled_for=datetime(2026,9,19).date(),progress=0),Todo(title='YESTERDAY PLAN',scheduled_for=datetime(2026,9,20).date(),progress=25),Todo(title='Today <script>alert(1)</script>',scheduled_for=datetime(2026,9,21).date(),progress=50,task_id=task.id),Todo(title='DONE TODAY',scheduled_for=datetime(2026,9,21).date(),progress=100),Todo(title='FUTURE PLAN',scheduled_for=datetime(2026,9,22).date(),progress=0)])
         db.commit()
         for kind in ['daily','unfinished']:
             result=report_content(db,Settings(include_past_todos=True),kind,now)
             assert 'OLD PLAN' not in result['body'] and 'FUTURE PLAN' not in result['body'] and 'DONE TODAY' not in result['body']
+            assert 'YESTERDAY PLAN' in result['body']
             assert 'In progress' in result['body'] and '22 Sep 2026, 01:00' in result['body']
             assert '<script>' not in result['html'] and '&lt;script&gt;' in result['html']
             assert 'Deadline' in result['html'] and '<table' in result['html']
@@ -410,3 +412,66 @@ def test_radio_directory_filters_unsafe_urls(client,monkeypatch):
     monkeypatch.setattr('urllib.request.urlopen',lambda *args,**kwargs:Response())
     rows=client.get('/api/music/radio/search?q=jazz').json()
     assert len(rows)==1 and rows[0]['name']=='Jazz'
+
+
+
+def test_meeting_email_one_hour_recurring_dedup_and_late_start(client,monkeypatch):
+    from app.notifications import tick
+    from app.main import engine
+    from app.models import EmailDelivery
+    config=dict(host='smtp.example.com',sender='me@example.com',recipient='me@example.com',enabled=True,daily_report=False,unfinished=False,meeting_reminders=True)
+    client.put('/api/notifications',json=config)
+    meeting(client,start_local='2026-09-22T14:00',frequency='weekly',interval=1,count=3,place='Lab 4',link='https://example.com/join')
+    starts=datetime(2026,9,22,10,0,tzinfo=timezone.utc)
+    sent=[];monkeypatch.setattr('app.notifications.deliver',lambda *args:sent.append(args))
+    tick(engine,starts-timedelta(hours=1,seconds=1));assert not sent
+    tick(engine,starts-timedelta(hours=1));tick(engine,starts-timedelta(minutes=59))
+    assert len(sent)==1 and '60 min' in sent[0][2] and 'Lab 4' in sent[0][3] and 'Open meeting link' in sent[0][4]['html']
+    tick(engine,starts+timedelta(days=7,minutes=-30))
+    assert len(sent)==2 and '30 min' in sent[1][2]
+    tick(engine,starts+timedelta(days=14,minutes=1));assert len(sent)==2
+    assert all(x['kind']=='meeting' for x in client.get('/api/notifications/history').json())
+
+
+def test_meeting_email_disabled_and_deleted(client,monkeypatch):
+    from app.notifications import tick
+    from app.main import engine
+    config=dict(host='smtp.example.com',sender='me@example.com',recipient='me@example.com',enabled=True,daily_report=False,unfinished=False,meeting_reminders=False)
+    client.put('/api/notifications',json=config)
+    m=meeting(client,start_local='2026-09-22T14:00',frequency='once').json()
+    sent=[];monkeypatch.setattr('app.notifications.deliver',lambda *args:sent.append(args))
+    now=datetime(2026,9,22,9,0,tzinfo=timezone.utc)
+    tick(engine,now);assert not sent
+    client.delete(f"/api/meetings/{m['id']}")
+    config['meeting_reminders']=True;client.put('/api/notifications',json=config)
+    tick(engine,now);assert not sent
+
+
+def test_focus_sound_upload_limit_and_removal(client,monkeypatch):
+    from app import focus_sounds
+    data=b'RIFF'+b'\x00'*4+b'WAVE'+b'\x00'*20
+    result=client.post('/api/focus-sounds',content=data,headers={'content-type':'audio/wav','x-file-name':'My%20alert.wav'})
+    assert result.status_code==201
+    sound=result.json();assert sound['url'].startswith('/api/focus-sounds/')
+    assert client.get(sound['url']).content==data
+    assert len(client.get('/api/focus-sounds').json())==1
+    assert client.get('/api/music').json()==[]
+    monkeypatch.setattr(focus_sounds,'MAX_BYTES',16)
+    assert client.post('/api/focus-sounds',content=data,headers={'content-type':'audio/wav'}).status_code==413
+    assert client.delete('/api/focus-sounds/'+str(sound['id'])).status_code==204
+    assert client.get(sound['url']).status_code==404
+
+
+def test_youtube_search_requires_key_and_normalizes_results(client,monkeypatch):
+    import json
+    monkeypatch.delenv('YOUTUBE_API_KEY',raising=False)
+    assert client.get('/api/music/youtube/search?q=study').status_code==503
+    monkeypatch.setenv('YOUTUBE_API_KEY','private-test-key')
+    class Response:
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def read(self,*args):return json.dumps({'items':[{'id':{'videoId':'abcdefghijk'},'snippet':{'title':'Study video','channelTitle':'Channel'}},{'id':{'videoId':'bad'},'snippet':{'title':'Bad','channelTitle':'Channel'}}]}).encode()
+    monkeypatch.setattr('urllib.request.urlopen',lambda *args,**kwargs:Response())
+    result=client.get('/api/music/youtube/search?q=study')
+    assert result.json()==[{'id':'abcdefghijk','title':'Study video','channel':'Channel'}]
+    assert 'private-test-key' not in result.text

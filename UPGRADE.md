@@ -1,6 +1,6 @@
 # Update your existing Docker installation
 
-This update adds readable email reports and a music library/player, alongside meetings, themes, the daily planner and Courses gallery. Existing coursework remains in the same SQLite database. Startup creates missing tables without replacing your courses or tasks.
+Version 5 adds one-hour meeting emails, today/yesterday reports, focus sounds, YouTube search and custom interface colors. Existing coursework remains in the same SQLite database. Startup creates missing tables without replacing your courses or tasks.
 
 1. In your existing project directory, back up your database:
 
@@ -9,7 +9,7 @@ This update adds readable email reports and a music library/player, alongside me
    docker compose cp backend:/data/academic-backup.db ./academic-backup.db
    ```
 
-2. Extract `academic-dashboard-v4.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
+2. Extract `academic-dashboard-v5.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
 
 3. From that same project folder, rebuild:
 
@@ -52,7 +52,7 @@ Use a fresh backup destination each time. Preserve all files together when resto
 
 ### Email scheduling and credentials
 
-Choose separate daily-report and unfinished-work times, an IANA time zone (for example `Asia/Dubai`), the upcoming coursework window, and the upcoming coursework window. Daily reports include only today's unfinished to-dos and unfinished coursework in the selected window, including overdue assignments. Unfinished reminders omit completed to-dos and are skipped when no unfinished to-do or coursework remains in scope. Future daily-plan items are not included before their plan day.
+Choose separate daily-report and unfinished-work times, an IANA time zone (for example `Asia/Dubai`), the upcoming coursework window, and the upcoming coursework window. Daily reports include today and yesterday's unfinished to-dos and unfinished coursework in the selected window, including overdue assignments. Unfinished reminders omit completed to-dos and are skipped when no unfinished to-do or coursework remains in scope. Future daily-plan items are not included before their plan day.
 
 The backend checks every 30 seconds. Keep Docker, your computer, and internet access running. The browser may be closed. A missed time is caught up later on the same local day; previous days are not replayed. There is at most one attempt per report type per local day, persisted across restarts. Changing a send time after that day's attempt does not trigger another attempt. Failed or interrupted sends are not retried automatically because SMTP acceptance can be ambiguous; inspect Recent deliveries and use the test button after correcting settings. A `sent` status means the SMTP server accepted the message, not a guarantee of inbox delivery.
 
@@ -65,15 +65,15 @@ Run one backend worker, as configured in the supplied Dockerfile. Disable schedu
 The implementation adapts useful patterns from [Google Calendar recurrence](https://support.google.com/calendar/answer/37115), [Google Calendar time zones](https://support.google.com/calendar/answer/37064), [Slack themes](https://slack.com/help/articles/205166337-Change-your-Slack-theme), [Slack compact display](https://slack.com/help/articles/213893898-Change-how-messages-are-displayed), [Notion appearance preferences](https://www.notion.com/en-gb/help/account-settings), and [Todoist notification settings](https://www.todoist.com/help/todoist/features/manage-your-notifications-in-todoist-QxQGXkMu).
 
 
-## New in version 4: clearer email reports and Music
+## Version 4: clearer email reports and Music (date filtering updated in version 5)
 
 ### Email changes
 
-Both daily reports and unfinished-work reminders include **only unfinished to-dos planned for the local date when the email is sent**, using the configured email time zone. Older plans, future plans and completed to-dos are excluded. The legacy previous-days toggle is removed and ignored even if it was enabled before upgrading. Existing SMTP settings and encrypted passwords are preserved.
+Both daily reports and unfinished-work reminders now include **unfinished to-dos planned for today and yesterday**, using the configured email time zone. Earlier plans, future plans and completed to-dos are excluded. The legacy previous-days toggle is removed and ignored even if it was enabled before upgrading. Existing SMTP settings and encrypted passwords are preserved.
 
 Reports have readable HTML tables with Task, Status and Deadline columns, a plain-text fallback, and attached PNG copies. Long reports are split into image pages rather than shrinking the font. All three versions use the same data. The setup screen previews the formatted HTML. Send test email now sends a sample report using your current data, marked TEST.
 
-For reminders linked to coursework, Deadline is the linked assignment's due time. Personal to-dos have no deadline field in this version and are clearly labeled **No deadline · planned today**. Upcoming and overdue coursework remains in its own table and continues to use your configured upcoming-days window. Today's to-do completion is independent from assignment completion.
+For reminders linked to coursework, Deadline is the linked assignment's due time. Personal to-dos have no deadline field in this version and are clearly labeled **No deadline**. Upcoming and overdue coursework remains in its own table and continues to use your configured upcoming-days window. Today's to-do completion is independent from assignment completion.
 
 ### Music
 
@@ -86,3 +86,36 @@ Favorites and volume are browser-local. Uploaded files and their metadata persis
 The image renderer adds Pillow and DejaVu fonts to the Docker image; rebuild both services. The database gains one new music table without replacing coursework. Nginx accepts uploads up to 101 MB; the audio API enforces its own 100 MB limit and the background API retains its 25 MB limit.
 
 Reference: [Radio Browser API](https://docs.radio-browser.info/).
+
+
+## New in version 5
+
+### Meeting emails and two-day reports
+
+In **Email reminders**, enable **Meeting reminders** along with scheduled delivery. Your existing SMTP settings are reused. Each meeting occurrence, including recurring meetings, gets one attempt approximately one hour before its start. The email includes title, local start time and time zone, duration, location, meeting link and notes. The scheduler checks every 30 seconds. If the app starts during that final hour, it sends a catch-up reminder with the actual minutes remaining; meetings already started are excluded. Keep Docker and the computer running. Delivery history records each attempt; failed or interrupted sends are not automatically retried to avoid duplicates after ambiguous SMTP acceptance.
+
+Daily reports and unfinished reminders include unfinished to-dos from **today and yesterday only**, in separate labeled tables. The email time zone defines those dates. Each row includes status/progress and the linked assignment deadline, if any. Personal to-dos show No deadline. Coursework keeps its separately configured upcoming/overdue window. These rules replace version 4's today-only filter.
+
+### Focus completion sounds
+
+Expand the focus timer, then **Finish sound**. Choose Gentle chime, Bell, Beeps or Silent, adjust volume, and use Test sound. Upload an audio file up to 10 MB for your own alert. Custom alerts play up to eight seconds; Stop sound stops a preview. Supported formats match the local music player and depend on browser codecs. Files persist in `/data/focus-sounds`; selection and volume persist per browser. The alert plays once when focus or break time naturally expires; finishing early does not sound it.
+
+Start/Resume or Test sound unlocks browser audio. Keep the app open and the computer awake; muted tabs, OS sleep and browser background throttling can prevent or delay alerts. This is a browser timer, not an operating-system alarm.
+
+### More music and YouTube
+
+Online radio starts with **All genres**, with pop, rock, hip-hop, R&B, electronic, dance, Arabic, African, reggae and other filters. In **Music → YouTube**, paste a video link to open the visible mini-player without an API key. It stays available as you navigate within Studyspace; playing YouTube pauses radio/local audio, and vice versa. Video embedding availability depends on the uploader.
+
+To enable in-app search:
+
+1. Create a Google Cloud project and enable **YouTube Data API v3** following the [official setup guide](https://developers.google.com/youtube/v3/getting-started).
+2. Create an API key, restrict it to YouTube Data API v3, and add `YOUTUBE_API_KEY=your-key` to your existing `.env` (do not replace your other settings). The backend keeps the key out of frontend responses.
+3. Run `docker compose up --build -d`. Search by song, artist or study genre in Music → YouTube. API quotas apply; pasting links remains available without search.
+
+The integration uses the official [search API](https://developers.google.com/youtube/v3/docs/search/list) and embedded player. In accordance with [YouTube player policies](https://developers.google.com/youtube/terms/developer-policies), the video remains visible and playback pauses when the browser tab is hidden. YouTube audio-only or hidden background playback is not supported. Local uploads and radio retain their normal background playback. YouTube receives your search query and browser/player requests; coursework is not sent.
+
+### Custom interface colors
+
+Open **Appearance** and choose accent and surface-tint colors, then **Use my custom colors**. They work with dark/light mode and existing panel styles, separately from backgrounds. Accent contrast adjusts for readability. Preset palettes and Reset remain available. Preferences are saved per browser.
+
+Version 5 adds the `focus_sounds` table (11 tables total) without replacing existing data. Include `/data/focus-sounds` in full-volume backups. Verification: 30 backend tests and 18 frontend tests pass, plus a production frontend build. SMTP tests use mocks and do not send real mail. Live YouTube search requires your API key; audible playback and external stream availability cannot be guaranteed by these tests.

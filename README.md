@@ -78,7 +78,8 @@ academic-dashboard/
 │   │   ├── main.py                  # Lifespan and coursework routes
 │   │   ├── meetings.py              # Time-zone-aware recurrence and CRUD
 │   │   ├── email_reports.py         # HTML tables and PNG report rendering
-│   │   ├── music.py                 # Audio library and radio discovery
+│   │   ├── music.py                 # Audio library, radio and YouTube search
+│   │   ├── focus_sounds.py          # Uploaded focus alerts
 │   │   ├── notifications.py         # SMTP configuration and daily scheduler
 │   │   ├── todos.py                 # Independent daily planner API
 │   │   ├── backgrounds.py           # Persistent media uploads
@@ -234,7 +235,7 @@ Retrying the same focus interval returns its original record. Reusing its identi
 
 - **Meetings:** recurring series with time zones, locations, links, agenda notes, end dates/counts and calendar integration.
 - **Music:** searchable uploads, favorites, online radio discovery and persistent playback across views.
-- **Email reminders:** SMTP setup, two daily schedules, readable HTML tables, PNG attachments, previews and delivery history; today-only unfinished to-dos, disabled until configured. See [UPGRADE.md](UPGRADE.md) for setup and scheduling behavior.
+- **Email reminders:** SMTP setup, two daily schedules, readable HTML tables, PNG attachments, previews and delivery history; today/yesterday unfinished to-dos and one-hour meeting reminders, disabled until configured. See [UPGRADE.md](UPGRADE.md) for setup and scheduling behavior.
 - **Interface themes:** five palettes, three panel styles, device/dark/light modes, spacing and text controls.
 - **To-do list:** independent daily plans, today/future date selection, item progress, editing/moving, and one-click reminders from coursework due in less than a week. See [UPGRADE.md](UPGRADE.md) for date and suggestion rules.
 - **Courses:** dedicated gallery with syllabus previews, progress and next deadlines; add courses directly here.
@@ -327,7 +328,7 @@ npm run build
 
 Tests also cover daily-plan date validation, reminder independence, progress bounds, uploads and media cleanup. Tests cover CRUD, checklist progress, timezone conversion, filtering, invalid inputs, foreign keys, cascades, retained focus history, duplicate focus saves, date boundaries, matrix rules, paused time, and late timer wake-ups.
 
-Verified in the development environment: **26 backend tests and 12 frontend tests passed**, the production frontend bundle built, and the frontend/proxied API returned HTTP 200. Compose configuration validation passed. Container build/run could not be verified because this environment denies access to Docker's named pipe. Browser checks verified daily-plan creation, completion and partial progress, future-date persistence after reload, reminder addition, the Courses gallery, and background preset selection. Version 3 also verifies meeting CRUD, recurrence through daylight-saving changes and month ends, encrypted credentials, report content, duplicate prevention, skipped completed work and SMTP failure handling. Browser checks verified meeting creation/calendar editing, palette selection and report preview. Version 4 adds tests for today-only filtering across timezone boundaries, HTML escaping, MIME alternatives and PNG attachments, image pagination, audio validation/range requests/deletion, and radio URL filtering. SMTP transport is tested with mocks; no real email was sent. Version 4 browser playback verification was interrupted; audible playback and live station availability were not verified. The existing Docker installation was not changed by these checks; preview data was isolated.
+Verified in the development environment: **30 backend tests and 18 frontend tests passed**, the production frontend bundle built, and the frontend/proxied API returned HTTP 200. Compose configuration validation passed. Container build/run could not be verified because this environment denies access to Docker's named pipe. Browser checks verified daily-plan creation, completion and partial progress, future-date persistence after reload, reminder addition, the Courses gallery, and background preset selection. Version 3 also verifies meeting CRUD, recurrence through daylight-saving changes and month ends, encrypted credentials, report content, duplicate prevention, skipped completed work and SMTP failure handling. Browser checks verified meeting creation/calendar editing, palette selection and report preview. Version 4 adds tests for today-only filtering across timezone boundaries, HTML escaping, MIME alternatives and PNG attachments, image pagination, audio validation/range requests/deletion, and radio URL filtering. SMTP transport is tested with mocks; no real email was sent. Version 4 browser playback verification was interrupted; audible playback and live station availability were not verified. The existing Docker installation was not changed by these checks; preview data was isolated.
 
 If a restricted Windows environment blocks Vite's native config bundler from traversing parent directories, use:
 
@@ -345,3 +346,8 @@ Preview serves the built bundle at **http://127.0.0.1:4173**, with the same API 
 - [SQLAlchemy SQLite foreign keys](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#foreign-key-support)
 - [Tailwind Vite integration](https://tailwindcss.com/docs/installation/using-vite)
 - [Vite guide](https://vite.dev/guide/)
+
+
+## Version 5 upgrades
+
+Meeting reminder emails, today/yesterday unfinished reports, selectable/uploaded focus alerts, expanded radio genres, official YouTube search/player, and custom accent/surface colors are included. Follow [UPGRADE.md](UPGRADE.md) for setup, API-key configuration and playback limitations. Existing Docker data is preserved.
