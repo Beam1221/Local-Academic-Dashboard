@@ -57,6 +57,13 @@ CREATE TABLE meetings (
 	updated_at DATETIME NOT NULL
 );
 
+CREATE TABLE music_settings (
+	id INTEGER NOT NULL, 
+	secret TEXT NOT NULL, 
+	config TEXT NOT NULL, 
+	PRIMARY KEY (id)
+);
+
 CREATE TABLE music_tracks (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
 	name VARCHAR(255) NOT NULL, 

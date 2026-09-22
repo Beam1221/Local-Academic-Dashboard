@@ -127,13 +127,15 @@ def radio_search(q: str = Query(default='', max_length=100), genre: str = Query(
     raise HTTPException(502, 'The radio directory is unavailable. Try again later; your uploaded library still works.')
 
 @router.get('/youtube/search')
-def youtube_search(q: str = Query(min_length=1, max_length=150)):
+def youtube_search(db: DB, q: str = Query(min_length=1, max_length=150)):
     import os, json, re
     import urllib.parse, urllib.request
-    key = os.getenv('YOUTUBE_API_KEY', '').strip()
+    from .music_settings import key as stored_key, config
+    key = stored_key(db)
+    options = config(db)
     if not key:
-        raise HTTPException(503, 'YouTube search needs YOUTUBE_API_KEY in your Docker .env file. You can paste a YouTube link without a key.')
-    params = {'part':'snippet', 'type':'video', 'videoEmbeddable':'true', 'videoSyndicated':'true', 'maxResults':12, 'q':q, 'key':key}
+        raise HTTPException(503, 'Add your YouTube API key in Settings. You can paste a YouTube link without a key.')
+    params = {'part':'snippet', 'type':'video', 'videoEmbeddable':'true', 'videoSyndicated':'true', 'maxResults':options.result_count, 'safeSearch':options.safe_search, 'q':q, 'key':key}
     try:
         req=urllib.request.Request('https://www.googleapis.com/youtube/v3/search?' + urllib.parse.urlencode(params), headers={'User-Agent':'Studyspace/5.0'})
         with urllib.request.urlopen(req,timeout=12) as response:

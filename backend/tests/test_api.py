@@ -475,3 +475,34 @@ def test_youtube_search_requires_key_and_normalizes_results(client,monkeypatch):
     result=client.get('/api/music/youtube/search?q=study')
     assert result.json()==[{'id':'abcdefghijk','title':'Study video','channel':'Channel'}]
     assert 'private-test-key' not in result.text
+
+
+def test_music_settings_secret_preservation_and_search_options(client, monkeypatch):
+    import json
+    from urllib.parse import parse_qs, urlparse
+    from app.models import MusicSettings
+    monkeypatch.delenv('YOUTUBE_API_KEY', raising=False)
+    assert client.get('/api/settings/music').json()['key_source'] == 'none'
+    response = client.put('/api/settings/music', json={'api_key':'private-test-key','result_count':6,'safe_search':'strict'})
+    assert response.status_code == 200
+    assert 'private-test-key' not in response.text
+    assert response.json()['has_key']
+    with Session(__import__('app.main', fromlist=['engine']).engine) as db:
+        assert 'private-test-key' not in db.get(MusicSettings,1).secret
+    assert client.put('/api/settings/music', json={'api_key':'','result_count':18}).json()['has_key']
+    seen = {}
+    class Reply:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def read(self,*args): return json.dumps({'items':[]}).encode()
+    def fetch(req, **kwargs):
+        seen.update(parse_qs(urlparse(req.full_url).query)); return Reply()
+    monkeypatch.setattr('urllib.request.urlopen',fetch)
+    assert client.get('/api/music/youtube/search?q=test').status_code == 200
+    assert seen['key']==['private-test-key'] and seen['maxResults']==['18']
+    assert client.put('/api/settings/music',json={'result_count':99}).status_code == 422
+    assert client.put('/api/settings/music',json={'api_key':'bad key'}).status_code == 422
+    monkeypatch.setenv('YOUTUBE_API_KEY','environment-key')
+    assert client.put('/api/settings/music',json={'clear_key':True}).json()['key_source']=='environment'
+    client.get('/api/music/youtube/search?q=test')
+    assert seen['key']==['environment-key']

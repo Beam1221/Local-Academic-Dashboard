@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import {
   BookOpen,
   Headphones,
+  Settings,
   Users,
   Mail,
   ListTodo,
@@ -30,6 +31,7 @@ import { Dashboard } from "./views/Dashboard";
 import { CourseView } from "./views/CourseView";
 import { MusicPlayer } from "./components/MusicPlayer";
 import { MeetingsView } from "./views/MeetingsView";
+import { SettingsView } from "./views/SettingsView";
 import { NotificationsView } from "./views/NotificationsView";
 import { CalendarView } from "./views/CalendarView";
 import { KanbanView } from "./views/KanbanView";
@@ -37,7 +39,7 @@ import { MatrixView } from "./views/MatrixView";
 import { Pomodoro } from "./components/Pomodoro";
 import { registerWorkspaceTools } from "./lib/webmcp";
 
-type View = "music" | "meetings" | "notifications" | "todos" | "courses" | "dashboard" | "calendar" | "board" | "matrix" | `course-${number}`;
+type View = "settings" | "music" | "meetings" | "notifications" | "todos" | "courses" | "dashboard" | "calendar" | "board" | "matrix" | `course-${number}`;
 type Dialog =
   | { type: "course"; course?: Course }
   | { type: "task"; task?: Task }
@@ -55,10 +57,11 @@ const navigation = [
   ["notifications", "Email reminders", Mail],
   ["board", "Kanban board", Columns3],
   ["matrix", "Priority matrix", Grid2X2],
+  ["settings", "Settings", Settings],
 ] as const;
 function currentView(): View {
   const value = location.hash.slice(1);
-  return /^(dashboard|todos|courses|calendar|music|meetings|notifications|board|matrix|course-\d+)$/.test(value)
+  return /^(settings|dashboard|todos|courses|calendar|music|meetings|notifications|board|matrix|course-\d+)$/.test(value)
     ? (value as View)
     : "dashboard";
 }
@@ -354,6 +357,7 @@ export default function App() {
               <MusicPlayer active={view === "music"} onOpen={()=>go("music")}/>
               {view === "meetings" && <MeetingsView/>}
               {view === "notifications" && <NotificationsView/>}
+              {view === "settings" && <SettingsView onAppearance={()=>setAppearanceOpen(true)}/>}
               {view === "todos" && <TodoView tasks={tasks} courses={courses} now={now} onTask={t => setDialog({ type: "detail", id: t.id })}/>}
               {view === "courses" && <CoursesView courses={courses} tasks={tasks} onCourse={id => go(`course-${id}`)} onNewCourse={() => setDialog({ type: "course" })}/>}
               {view === "calendar" && (

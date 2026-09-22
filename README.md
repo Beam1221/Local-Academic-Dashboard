@@ -328,7 +328,7 @@ npm run build
 
 Tests also cover daily-plan date validation, reminder independence, progress bounds, uploads and media cleanup. Tests cover CRUD, checklist progress, timezone conversion, filtering, invalid inputs, foreign keys, cascades, retained focus history, duplicate focus saves, date boundaries, matrix rules, paused time, and late timer wake-ups.
 
-Verified in the development environment: **30 backend tests and 18 frontend tests passed**, the production frontend bundle built, and the frontend/proxied API returned HTTP 200. Compose configuration validation passed. Container build/run could not be verified because this environment denies access to Docker's named pipe. Browser checks verified daily-plan creation, completion and partial progress, future-date persistence after reload, reminder addition, the Courses gallery, and background preset selection. Version 3 also verifies meeting CRUD, recurrence through daylight-saving changes and month ends, encrypted credentials, report content, duplicate prevention, skipped completed work and SMTP failure handling. Browser checks verified meeting creation/calendar editing, palette selection and report preview. Version 4 adds tests for today-only filtering across timezone boundaries, HTML escaping, MIME alternatives and PNG attachments, image pagination, audio validation/range requests/deletion, and radio URL filtering. SMTP transport is tested with mocks; no real email was sent. Version 4 browser playback verification was interrupted; audible playback and live station availability were not verified. The existing Docker installation was not changed by these checks; preview data was isolated.
+Verified in the development environment: **31 backend tests and 21 frontend tests passed**, the production frontend bundle built, and the frontend/proxied API returned HTTP 200. Compose configuration validation passed. Container build/run could not be verified because this environment denies access to Docker's named pipe. Browser checks verified daily-plan creation, completion and partial progress, future-date persistence after reload, reminder addition, the Courses gallery, and background preset selection. Version 3 also verifies meeting CRUD, recurrence through daylight-saving changes and month ends, encrypted credentials, report content, duplicate prevention, skipped completed work and SMTP failure handling. Browser checks verified meeting creation/calendar editing, palette selection and report preview. Version 4 adds tests for today-only filtering across timezone boundaries, HTML escaping, MIME alternatives and PNG attachments, image pagination, audio validation/range requests/deletion, and radio URL filtering. SMTP transport is tested with mocks; no real email was sent. Version 4 browser playback verification was interrupted; audible playback and live station availability were not verified. The existing Docker installation was not changed by these checks; preview data was isolated.
 
 If a restricted Windows environment blocks Vite's native config bundler from traversing parent directories, use:
 
@@ -351,3 +351,13 @@ Preview serves the built bundle at **http://127.0.0.1:4173**, with the same API 
 ## Version 5 upgrades
 
 Meeting reminder emails, today/yesterday unfinished reports, selectable/uploaded focus alerts, expanded radio genres, official YouTube search/player, and custom accent/surface colors are included. Follow [UPGRADE.md](UPGRADE.md) for setup, API-key configuration and playback limitations. Existing Docker data is preserved.
+
+
+## Version 6 upgrades
+
+Settings now stores an encrypted YouTube API key and search preferences. The mini-player is draggable, supports keyboard movement and two sizes, and displays above the sidebar. See [UPGRADE.md](UPGRADE.md) for configuration, backup and playback details.
+
+
+## Version 7 playback update
+
+The app no longer pauses YouTube on browser-tab changes. The mini-player eye-off button hides it without unmounting; Show player restores it, with Pause/Stop controls available while hidden. Browser/YouTube restrictions may still interrupt playback. See [UPGRADE.md](UPGRADE.md) for details and verification limits.

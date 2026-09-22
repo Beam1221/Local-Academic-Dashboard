@@ -1,6 +1,6 @@
 # Update your existing Docker installation
 
-Version 5 adds one-hour meeting emails, today/yesterday reports, focus sounds, YouTube search and custom interface colors. Existing coursework remains in the same SQLite database. Startup creates missing tables without replacing your courses or tasks.
+Version 7 removes the app-imposed pause on browser-tab changes and adds hide/show controls without destroying the player. Existing API keys, email settings and coursework are preserved. Existing coursework remains in the same SQLite database. Startup creates missing tables without replacing your courses or tasks.
 
 1. In your existing project directory, back up your database:
 
@@ -9,7 +9,7 @@ Version 5 adds one-hour meeting emails, today/yesterday reports, focus sounds, Y
    docker compose cp backend:/data/academic-backup.db ./academic-backup.db
    ```
 
-2. Extract `academic-dashboard-v5.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
+2. Extract `academic-dashboard-v7.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
 
 3. From that same project folder, rebuild:
 
@@ -112,10 +112,32 @@ To enable in-app search:
 2. Create an API key, restrict it to YouTube Data API v3, and add `YOUTUBE_API_KEY=your-key` to your existing `.env` (do not replace your other settings). The backend keeps the key out of frontend responses.
 3. Run `docker compose up --build -d`. Search by song, artist or study genre in Music → YouTube. API quotas apply; pasting links remains available without search.
 
-The integration uses the official [search API](https://developers.google.com/youtube/v3/docs/search/list) and embedded player. In accordance with [YouTube player policies](https://developers.google.com/youtube/terms/developer-policies), the video remains visible and playback pauses when the browser tab is hidden. YouTube audio-only or hidden background playback is not supported. Local uploads and radio retain their normal background playback. YouTube receives your search query and browser/player requests; coursework is not sent.
+The original version 5 integration uses the official [search API](https://developers.google.com/youtube/v3/docs/search/list) and embedded player. In accordance with [YouTube player policies](https://developers.google.com/youtube/terms/developer-policies), the video remains visible and playback pauses when the browser tab is hidden. YouTube audio-only or hidden background playback is not supported. Local uploads and radio retain their normal background playback. YouTube receives your search query and browser/player requests; coursework is not sent.
 
 ### Custom interface colors
 
 Open **Appearance** and choose accent and surface-tint colors, then **Use my custom colors**. They work with dark/light mode and existing panel styles, separately from backgrounds. Accent contrast adjusts for readability. Preset palettes and Reset remain available. Preferences are saved per browser.
 
 Version 5 adds the `focus_sounds` table (11 tables total) without replacing existing data. Include `/data/focus-sounds` in full-volume backups. Verification: 30 backend tests and 18 frontend tests pass, plus a production frontend build. SMTP tests use mocks and do not send real mail. Live YouTube search requires your API key; audible playback and external stream availability cannot be guaranteed by these tests.
+
+
+## Version 6: movable player and Settings (playback behavior updated in version 7)
+
+- **Settings → YouTube & music:** save or replace your YouTube Data API v3 key directly in the app. Choose 6, 12, 18 or 25 results and a search-filter level. No Docker restart is needed after saving. Enable YouTube Data API v3 in Google Cloud for your key. Saving stores the key; a search checks whether it is valid and has available quota.
+- API keys are encrypted in the `music_settings` table using the existing `/data/email.key`. Blank input preserves a saved key; Remove saved key removes it. A saved key takes precedence over `YOUTUBE_API_KEY` in Docker. After removal, an environment key becomes active again. Keys are never returned to the frontend. Back up the entire `/data` directory, including the encryption key. This remains a trusted local app without account authentication.
+- The **mini-player now appears above navigation**. Drag the four-arrow handle with a mouse or touch, or focus it and use arrow keys. Compact/Larger toggles video size; Reset position returns it to the upper-right. Position and size persist in this browser. Resizing the browser brings an off-screen player back into reach.
+- The visible player remains mounted while navigating to To-do, Courses, Settings or other sections. It pauses when the browser tab is hidden. YouTube-to-audio conversion and hidden YouTube playback are not included because the official API's policies prohibit these features. Use uploaded music or online radio for background audio. See [YouTube developer policies](https://developers.google.com/youtube/terms/developer-policies).
+- Settings also links to Appearance and email configuration. Existing email configuration and behavior are unchanged.
+
+The database now has 12 tables. Verification: 31 backend tests and 21 frontend tests passed; the production build passed. Browser checks confirmed the Settings controls, drag movement, size toggle and mini-player persistence when navigating. Live YouTube playback could not be verified because the external embedded player did not finish loading in the test browser; no real API key or email was used in tests.
+
+
+## New in version 7: hide/show and tab switching
+
+This section supersedes the tab-visibility behavior described in versions 5 and 6 above. Studyspace no longer calls pause when you switch browser tabs, and does not pause a playing video because the document is hidden.
+
+Click the **eye-off icon** in the mini-player header to hide the video without stopping it. A small **Show player** control remains, with Pause and Stop buttons. Show player restores the existing embedded player, preserving its playback position. The X button explicitly stops and closes it. Starting local music or radio still pauses YouTube to prevent overlapping audio. Selecting another video opens its player again.
+
+Keep Studyspace open. This removes the app's forced pause; it cannot guarantee background playback if YouTube, the browser, mobile power management or OS sleep suspends it. No audio extraction, conversion or download is included. Hidden/background use is outside YouTube's documented API player policies; this update should not be represented as a compliant public YouTube API client.
+
+Update using the backup and rebuild steps above. The saved API key stays in your existing Docker volume; no new key setup or database migration is required. Verification: production build and 21 frontend tests passed. Browser checks verified that hiding leaves the embedded player mounted and Show player restores it. External YouTube playback did not finish loading in the test browser, so uninterrupted audible playback across tabs was not verified. No changes were made to email logic.

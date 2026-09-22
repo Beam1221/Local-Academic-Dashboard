@@ -208,3 +208,9 @@ class FocusSound(Base):
     name: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(50))
     storage_name: Mapped[str] = mapped_column(String(50), unique=True)
+
+class MusicSettings(Base):
+    __tablename__ = 'music_settings'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    secret: Mapped[str] = mapped_column(Text, default='')
+    config: Mapped[str] = mapped_column(Text, default='{}')
