@@ -9,7 +9,7 @@ Version 7 removes the app-imposed pause on browser-tab changes and adds hide/sho
    docker compose cp backend:/data/academic-backup.db ./academic-backup.db
    ```
 
-2. Extract `academic-dashboard-v7.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
+2. Extract `academic-dashboard-v8.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
 
 3. From that same project folder, rebuild:
 
@@ -141,3 +141,12 @@ Click the **eye-off icon** in the mini-player header to hide the video without s
 Keep Studyspace open. This removes the app's forced pause; it cannot guarantee background playback if YouTube, the browser, mobile power management or OS sleep suspends it. No audio extraction, conversion or download is included. Hidden/background use is outside YouTube's documented API player policies; this update should not be represented as a compliant public YouTube API client.
 
 Update using the backup and rebuild steps above. The saved API key stays in your existing Docker volume; no new key setup or database migration is required. Verification: production build and 21 frontend tests passed. Browser checks verified that hiding leaves the embedded player mounted and Show player restores it. External YouTube playback did not finish loading in the test browser, so uninterrupted audible playback across tabs was not verified. No changes were made to email logic.
+
+
+## New in version 8: Ethiopian radio
+
+In **Music**, click **🇪🇹 Ethiopian radio**. This opens Online radio, selects Ethiopia, and clears the previous station name and genre so you see the widest selection. The Radio country dropdown lets you switch between Ethiopia and Worldwide. Search by station name or filter by genre; favorites and background audio use the existing player.
+
+Ethiopia requests the directory's full country listing (rather than the worldwide top 30), using the standardized `ET` country code. This is a live directory, not a hardcoded station list. Only secure public stream URLs pass the existing checks. Offline stations, unsupported streams, broadcasters missing from the directory, and diaspora stations listed under another country may not appear. No API key is needed. Source: [Radio Browser API](https://docs.radio-browser.info/).
+
+Existing data, favorites, email settings and YouTube keys are preserved. Rebuild both services using the upgrade steps above. The two radio API tests passed, covering the country filter, more than 30 results, genre/name filters, worldwide selection and unsafe URLs. The production frontend build passed. Live directory verification returned an unavailable error in the development environment; individual station availability and audible playback were not verified.

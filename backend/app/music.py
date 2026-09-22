@@ -98,17 +98,18 @@ def delete_track(asset_id: int, db: DB):
 
 
 @router.get('/radio/search')
-def radio_search(q: str = Query(default='', max_length=100), genre: str = Query(default='jazz', max_length=50)):
+def radio_search(q: str = Query(default='', max_length=100), genre: str = Query(default='', max_length=50), country: str = Query(default='', pattern=r'^(ET)?$')):
     """Only the public directory is fetched server-side. Playback goes directly to the station."""
     import json
     import urllib.request
     import urllib.parse
-    params = {'name': q.strip(), 'tag': genre.strip(), 'limit': 30, 'hidebroken': 'true', 'order': 'votes', 'reverse': 'true', 'is_https': 'true'}
+    params = {'name': q.strip(), 'tag': genre.strip(), 'limit': 100000 if country == 'ET' else 30, 'hidebroken': 'true', 'order': 'votes', 'reverse': 'true', 'is_https': 'true'}
+    if country: params['countrycode'] = country
     for host in ['de1.api.radio-browser.info', 'nl1.api.radio-browser.info']:
         try:
             req = urllib.request.Request('https://' + host + '/json/stations/search?' + urllib.parse.urlencode(params), headers={'User-Agent': 'Studyspace/4.0'})
             with urllib.request.urlopen(req, timeout=8) as response:
-                rows = json.loads(response.read(1024 * 1024))
+                rows = json.loads(response.read(8 * 1024 * 1024))
             result = []
             for row in rows:
                 url = row.get('url_resolved', '')

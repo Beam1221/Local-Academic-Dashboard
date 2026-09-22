@@ -506,3 +506,25 @@ def test_music_settings_secret_preservation_and_search_options(client, monkeypat
     assert client.put('/api/settings/music',json={'clear_key':True}).json()['key_source']=='environment'
     client.get('/api/music/youtube/search?q=test')
     assert seen['key']==['environment-key']
+
+
+def test_ethiopian_radio_uses_country_and_all_genres(client, monkeypatch):
+    import json
+    from urllib.parse import urlparse, parse_qs
+    calls=[]
+    class Reply:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def read(self,*args): return json.dumps([{'stationuuid':str(i),'name':f'Ethiopian station {i}','url_resolved':f'https://radio.example.com/{i}','country':'Ethiopia'} for i in range(45)]).encode()
+    def fetch(req,**kwargs):
+        calls.append(parse_qs(urlparse(req.full_url).query,keep_blank_values=True)); return Reply()
+    monkeypatch.setattr('urllib.request.urlopen',fetch)
+    rows=client.get('/api/music/radio/search?country=ET').json()
+    assert len(rows)==45
+    assert calls[-1]['countrycode']==['ET'] and calls[-1]['tag']==['']
+    assert int(calls[-1]['limit'][0])>30
+    client.get('/api/music/radio/search?country=ET&q=Fana&genre=news')
+    assert calls[-1]['name']==['Fana'] and calls[-1]['tag']==['news']
+    client.get('/api/music/radio/search')
+    assert 'countrycode' not in calls[-1]
+    assert client.get('/api/music/radio/search?country=unexpected').status_code==422

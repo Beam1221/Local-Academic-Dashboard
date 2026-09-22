@@ -361,3 +361,8 @@ Settings now stores an encrypted YouTube API key and search preferences. The min
 ## Version 7 playback update
 
 The app no longer pauses YouTube on browser-tab changes. The mini-player eye-off button hides it without unmounting; Show player restores it, with Pause/Stop controls available while hidden. Browser/YouTube restrictions may still interrupt playback. See [UPGRADE.md](UPGRADE.md) for details and verification limits.
+
+
+## Version 8: Ethiopian radio
+
+Music includes an Ethiopian radio shortcut and an Ethiopia/Worldwide selector. Ethiopia loads available secure streams from the live Radio Browser country listing, without the worldwide 30-result cap. Search and save favorites as usual. See [UPGRADE.md](UPGRADE.md) for availability and upgrade details.
