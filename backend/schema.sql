@@ -78,6 +78,12 @@ CREATE TABLE notification_settings (
 	secret TEXT NOT NULL
 );
 
+CREATE TABLE youtube_account (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	config TEXT NOT NULL, 
+	secret TEXT NOT NULL
+);
+
 CREATE TABLE tasks (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
 	course_id INTEGER NOT NULL, 

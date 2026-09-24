@@ -129,6 +129,7 @@ def radio_search(q: str = Query(default='', max_length=100), genre: str = Query(
 
 @router.get('/youtube/search')
 def youtube_search(db: DB, q: str = Query(min_length=1, max_length=150)):
+    from html import unescape
     import os, json, re
     import urllib.parse, urllib.request
     from .music_settings import key as stored_key, config
@@ -141,6 +142,6 @@ def youtube_search(db: DB, q: str = Query(min_length=1, max_length=150)):
         req=urllib.request.Request('https://www.googleapis.com/youtube/v3/search?' + urllib.parse.urlencode(params), headers={'User-Agent':'Studyspace/5.0'})
         with urllib.request.urlopen(req,timeout=12) as response:
             data=json.loads(response.read(1024*1024))
-        return [{'id':v['id']['videoId'], 'title':v['snippet']['title'], 'channel':v['snippet']['channelTitle']} for v in data.get('items',[]) if re.fullmatch(r'[A-Za-z0-9_-]{11}',v.get('id',{}).get('videoId',''))]
+        return [{'id':v['id']['videoId'], 'title':unescape(v['snippet']['title']), 'channel':unescape(v['snippet']['channelTitle'])} for v in data.get('items',[]) if re.fullmatch(r'[A-Za-z0-9_-]{11}',v.get('id',{}).get('videoId',''))]
     except Exception:
         raise HTTPException(502, 'YouTube search is unavailable. Check your API key, enabled YouTube Data API and quota. Paste a video link to play directly.')

@@ -528,3 +528,100 @@ def test_ethiopian_radio_uses_country_and_all_genres(client, monkeypatch):
     client.get('/api/music/radio/search')
     assert 'countrycode' not in calls[-1]
     assert client.get('/api/music/radio/search?country=unexpected').status_code==422
+
+
+def oauth_config(client):
+    return client.put('/api/youtube/account/settings',json={'client_id':'test-client.apps.googleusercontent.com',
+        'client_secret':'private-oauth-secret','redirect_uri':'http://localhost:8080/api/youtube/account/callback'})
+
+
+def oauth_connect(client):
+    from urllib.parse import urlparse, parse_qs
+    response=client.post('/api/youtube/account/connect',headers={'origin':'http://localhost:8080'})
+    assert response.status_code==200,response.text
+    assert 'httponly' in response.headers['set-cookie'].lower()
+    return parse_qs(urlparse(response.json()['url']).query)
+
+
+def test_youtube_oauth_state_pkce_encryption_refresh_and_disconnect(client,monkeypatch):
+    from app import youtube_account as yt
+    from app.main import engine
+    assert oauth_config(client).status_code==200
+    assert 'private-oauth-secret' not in client.get('/api/youtube/account/settings').text
+    assert client.post('/api/youtube/account/connect',headers={'origin':'http://wrong.example'}).status_code==422
+    params=oauth_connect(client)
+    assert params['scope']==[yt.SCOPE] and params['code_challenge_method']==['S256']
+    assert client.get('/api/youtube/account/callback?state=wrong&code=test').status_code==400
+    calls=[]
+    def google(url,form=None,bearer=None):
+        calls.append((url,form,bearer))
+        if url.endswith('/token'): return {'access_token':'private-access','refresh_token':'private-refresh','scope':yt.SCOPE,'expires_in':3600}
+        if url.endswith('/revoke'): return {}
+        return {'items':[{'id':'PLone','snippet':{'title':'My playlist'},'contentDetails':{'itemCount':3}}],'nextPageToken':'page-two'}
+    monkeypatch.setattr(yt,'google_request',google)
+    result=client.get('/api/youtube/account/callback',params={'state':params['state'][0],'code':'auth-code'})
+    assert result.status_code==200 and 'connected' in result.text
+    assert 'private-access' not in result.text
+    assert calls[0][1]['code_verifier']
+    assert client.get('/api/youtube/account/callback',params={'state':params['state'][0],'code':'auth-code'}).status_code==400
+    assert client.get('/api/youtube/account/settings').json()['connected']
+    with Session(engine) as db:
+        row, config, private=yt.load(db)
+        assert 'private-access' not in row.secret
+        private['expires']=0;yt.persist(db,row,config,private)
+    playlists=client.get('/api/youtube/account/playlists').json()
+    assert playlists['next_page']=='page-two' and playlists['items'][0]['count']==3
+    assert calls[-2][1]['grant_type']=='refresh_token' and calls[-1][2]=='private-access'
+    assert client.post('/api/youtube/account/disconnect').json()['revoked']
+    assert not client.get('/api/youtube/account/settings').json()['connected']
+    assert client.get('/api/youtube/account/playlists').status_code==401
+
+
+def test_oauth_cookie_expiry_and_redirect_validation(client,monkeypatch):
+    from app import youtube_account as yt
+    from app.main import engine
+    for uri in ['http://evil.example/api/youtube/account/callback','https://user:pass@example.com/api/youtube/account/callback','http://localhost:8080/wrong','javascript:alert(1)']:
+        assert client.put('/api/youtube/account/settings',json={'redirect_uri':uri}).status_code==422
+    oauth_config(client);params=oauth_connect(client)
+    client.cookies.clear()
+    assert client.get('/api/youtube/account/callback',params={'state':params['state'][0],'code':'code'}).status_code==400
+    params=oauth_connect(client)
+    with Session(engine) as db:
+        row,config,private=yt.load(db);private['pending']['expires']=0;yt.persist(db,row,config,private)
+    assert client.get('/api/youtube/account/callback',params={'state':params['state'][0],'code':'code'}).status_code==400
+    params=oauth_connect(client)
+    assert client.get('/api/youtube/account/callback',params={'state':params['state'][0],'error':'access_denied'}).status_code==200
+    assert not client.get('/api/youtube/account/settings').json()['connected']
+
+
+def test_playlist_pagination_filters_unavailable_and_preserves_order(client,monkeypatch):
+    from app import youtube_account as yt
+    from urllib.parse import urlparse,parse_qs
+    monkeypatch.setenv('YOUTUBE_API_KEY','key-not-returned')
+    calls=[]
+    def google(url,**kwargs):
+        params=parse_qs(urlparse(url).query);calls.append(params)
+        return {'nextPageToken':'next','items':[
+            {'snippet':{'title':'First','resourceId':{'videoId':'abcdefghijk'}}},
+            {'snippet':{'title':'Private video','resourceId':{'videoId':'12345678901'}}},
+            {'snippet':{'title':'Second','resourceId':{'videoId':'ABCDEFGHIJK'}}}]}
+    monkeypatch.setattr(yt,'google_request',google)
+    result=client.get('/api/youtube/playlist-items/PLtest?page_token=page2')
+    assert result.status_code==200 and 'key-not-returned' not in result.text
+    assert [x['title'] for x in result.json()['items']]==['First','Second']
+    assert result.json()['next_page']=='next' and calls[0]['pageToken']==['page2']
+    assert client.get('/api/youtube/playlist-items/bad!').status_code==422
+
+
+def test_youtube_search_retains_all_embed_filters(client,monkeypatch):
+    from urllib.parse import urlparse,parse_qs
+    monkeypatch.setenv('YOUTUBE_API_KEY','secret-key')
+    seen=[]
+    class Reply:
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def read(self,*args):return b'{"items":[]}'
+    def fetch(req,**kwargs):seen.append(parse_qs(urlparse(req.full_url).query));return Reply()
+    monkeypatch.setattr('urllib.request.urlopen',fetch)
+    assert client.get('/api/music/youtube/search?q=music').status_code==200
+    assert {k:seen[0][k] for k in ['type','videoEmbeddable','videoSyndicated']}=={'type':['video'],'videoEmbeddable':['true'],'videoSyndicated':['true']}

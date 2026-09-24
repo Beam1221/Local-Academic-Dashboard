@@ -1,6 +1,6 @@
 # Update your existing Docker installation
 
-Version 7 removes the app-imposed pause on browser-tab changes and adds hide/show controls without destroying the player. Existing API keys, email settings and coursework are preserved. Existing coursework remains in the same SQLite database. Startup creates missing tables without replacing your courses or tasks.
+Version 9 fixes YouTube player identification, adds continuous queues and playlist import, and supports Google account connection for playlist access in the web/Docker app. Existing API keys, email settings and coursework are preserved. Startup creates missing tables without replacing your courses or tasks.
 
 1. In your existing project directory, back up your database:
 
@@ -9,7 +9,7 @@ Version 7 removes the app-imposed pause on browser-tab changes and adds hide/sho
    docker compose cp backend:/data/academic-backup.db ./academic-backup.db
    ```
 
-2. Extract `academic-dashboard-v8.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
+2. Extract `academic-dashboard-v9.zip`. Copy the contents of its `academic-dashboard` folder into your existing project folder, replacing source files. Keep your existing `.env`, backups, and any customized Compose project/volume settings. The default Compose project name remains `studyspace` and the volume remains `academic-data`.
 
 3. From that same project folder, rebuild:
 

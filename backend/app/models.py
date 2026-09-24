@@ -214,3 +214,10 @@ class MusicSettings(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     secret: Mapped[str] = mapped_column(Text, default='')
     config: Mapped[str] = mapped_column(Text, default='{}')
+
+class YouTubeAccount(Base):
+    __tablename__ = 'youtube_account'
+    __table_args__ = {'sqlite_autoincrement': True}
+    id: Mapped[int] = mapped_column(primary_key=True)
+    config: Mapped[str] = mapped_column(Text, default='{}')
+    secret: Mapped[str] = mapped_column(Text, default='')

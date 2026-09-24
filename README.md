@@ -4,6 +4,8 @@ A complete local app using **FastAPI, SQLAlchemy, SQLite, React, TypeScript, Tai
 
 Upgrading an existing installation? Follow [UPGRADE.md](UPGRADE.md) to preserve your coursework.
 
+Windows desktop installer and data migration: see [desktop/README.md](desktop/README.md). The desktop build bundles Electron and Python and does not need Docker on the receiving PC.
+
 ## Quick start
 
 With Docker Desktop running, open a terminal in this directory:
@@ -366,3 +368,8 @@ The app no longer pauses YouTube on browser-tab changes. The mini-player eye-off
 ## Version 8: Ethiopian radio
 
 Music includes an Ethiopian radio shortcut and an Ethiopia/Worldwide selector. Ethiopia loads available secure streams from the live Radio Browser country listing, without the worldwide 30-result cap. Search and save favorites as usual. See [UPGRADE.md](UPGRADE.md) for availability and upgrade details.
+
+## Version 9: YouTube queues and account playlists
+
+YouTube now sets identification before loading, skips unavailable results, and advances through a repeatable queue. Import public playlists or connect your Google account for your playlists. See [YOUTUBE-V9.md](YOUTUBE-V9.md) for setup, findings, verification and desktop limitations. See [UPGRADE.md](UPGRADE.md) to install the update.
+
